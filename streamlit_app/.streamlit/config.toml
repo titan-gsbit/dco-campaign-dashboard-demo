@@ -1,0 +1,28 @@
+# DCO campaign dashboard theme — light, GSB-pink family, wireframe type pair.
+# Magenta darkened to #b8296e (5.9:1 on white) so primary-button text passes AA.
+[theme]
+base = "light"
+primaryColor = "#b8296e"
+backgroundColor = "#faf9f7"
+secondaryBackgroundColor = "#f1efec"
+textColor = "#1b1b1a"
+borderColor = "#dcd9d5"
+linkColor = "#b8296e"
+baseRadius = "4px"
+
+font = "'Space Grotesk':https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+
+# semantic status colors (RAG) — used by badges and :green[...] markup
+greenColor = "#4a7c59"
+orangeColor = "#a97b22"
+redColor = "#b04a45"
+violetColor = "#b8296e"
+grayColor = "#6f6d6a"
+
+# charts: magenta lead + neutral supports + RAG
+chartCategoricalColors = ["#b8296e", "#1b1b1a", "#8c8a86", "#d9a1bd", "#c9c6c2", "#6f6d6a", "#efe0e8"]
+chartSequentialColors = ["#faf5f8", "#f3dbe7", "#e9bcd2", "#dd9abc", "#d077a5", "#c1548e", "#b8296e", "#93215a", "#6d1843", "#47102c"]
+
+[theme.sidebar]
+backgroundColor = "#f4f2ef"

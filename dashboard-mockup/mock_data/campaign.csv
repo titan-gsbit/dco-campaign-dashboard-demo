@@ -1,0 +1,2 @@
+campaign_id,name,product,objective,status,start_date,end_date,target_disbursed_ge3m_thb,target_leads,budget_thb,planned_cpl_thb,cost_owner,utm_tag,attribution_rule,attribution_window_days,control_group_pct,kpi_def_version,owner_user_id
+DCO2026,DCO Housing Loan 2026,housing+refinance,Acquire mid-market housing loans of THB 3M or more,Running,2026-09-01,2026-11-30,450000000,3000,850500.0,950,GSB Marketing,DCO2026,last_click,30,8.0,v1.1,owner.gsb
