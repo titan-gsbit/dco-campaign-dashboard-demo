@@ -19,6 +19,12 @@ import sys
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get("DCO_BASE", "http://localhost:8507")
+
+# Seats come from signing in now, not from ?seat=. Each goto starts a fresh
+# Streamlit session, so every step signs in again — which also means the capture
+# exercises the deep-link-survives-login path for real on every single step.
+CREDS = {"campaign owner": ("owner.gsb", "dco-owner"),
+         "admin": ("marketing.gsb", "dco-marketing")}
 # The pinned playwright build may not match what is on disk. Fall back to whatever
 # headless shell is cached rather than forcing a download on every machine.
 _CACHE = os.path.expanduser("~/Library/Caches/ms-playwright")
@@ -105,7 +111,7 @@ HL = """
 # TOP is the deliverable set: the owner's top tasks collapse into two paths, not
 # three, because O3 and O6 are the head and tail of the same walk. S4 stays
 # defined here as a real flow, it is simply not one of the five top paths.
-TOP = {"S2", "S3", "S6", "S7", "S8"}
+TOP = {"S2", "S3", "S11", "S6", "S7", "S8", "S9", "S10"}
 
 # One entry per flow. Steps carry the real URL, the element to ring, the
 # instruction, and optionally `do`: interactions to perform before capturing,
@@ -116,21 +122,22 @@ FLOWS = [
              "minutes before the meeting.",
   "meta": ["4 clicks", "about 60 seconds", "output: a message to the admin"],
   "steps": [
-   ("/?seat=owner", "text:Disbursed ≥", None,
+   ("/", "text:Disbursed ≥", None,
     "The Disbursed tile is behind plan. Click it.",
-    "Overview is the owner's landing screen, so the bad number is already in front of them."),
-   ("/loan_funnel?seat=owner", "text:Steepest drop", None,
+    "Overview opens with the campaign profile, then the pace bullet, then the "
+    "tiles. The bad number is already in front of them before any clicking."),
+   ("/loan_funnel", "text:Steepest drop", None,
     "Read the alert. It names the drop AND who owns the fix.",
     "Qualified leads to application, 26%, 881 leads lost. Level 4 of the KPI framework, so "
     "this belongs to GSB credit, not to media and not to branch follow-up."),
-   ("/loan_funnel?seat=owner", "chart:Where the money leaks", None,
+   ("/loan_funnel", "chart:Where the money leaks", None,
     "Click the failing stage bar to see who is stuck there.",
     "Every bar is a filter in disguise. Clicking one opens the customer list already filtered."),
-   ("/customers?seat=owner&stage=Booked&branch_name=Chiang%20Mai", "text:Drilled", None,
+   ("/customers?stage=Booked&branch_name=%E0%B8%AA%E0%B8%B2%E0%B8%82%E0%B8%B2%E0%B8%88%E0%B8%95%E0%B8%B8%E0%B8%88%E0%B8%B1%E0%B8%81%E0%B8%A3", "text:Drilled", None,
     "The chips show exactly which slice you are looking at.",
     "Click an x to widen back out. The trail is always visible, so you cannot lose track of "
     "which filter produced the number on screen."),
-   ("/customers?seat=owner&stage=Booked&branch_name=Chiang%20Mai", "text:leads |", None,
+   ("/customers?stage=Booked&branch_name=%E0%B8%AA%E0%B8%B2%E0%B8%82%E0%B8%B2%E0%B8%88%E0%B8%95%E0%B8%B8%E0%B8%88%E0%B8%B1%E0%B8%81%E0%B8%A3", "text:leads |", None,
     "Copy this line. It is the whole finding in one paste.",
     "The owner cannot change a lead, so the path has to end in something they can send."),
   ]},
@@ -141,26 +148,26 @@ FLOWS = [
              "whether that is a problem or just how the segment works.",
   "meta": ["3 clicks", "about 90 seconds", "output: a budget verdict"],
   "steps": [
-   ("/lead_quality?seat=owner", "chart:Cost per lead vs qualified rate", None,
+   ("/lead_quality", "chart:Cost per lead vs qualified rate", None,
     "Find the segment that is expensive without being better.",
     "First-Home Urban Starters costs ฿350 per lead. The Monthly Relief costs ฿100. Both sit "
     "at a similar qualified rate, which is the whole problem: you are paying three and a "
     "half times more for the same quality of lead."),
-   ("/business?seat=owner", "table:Unit economics by segment", None,
+   ("/business", "table:Unit economics by segment", None,
     "Read the ROAS column. That is where the gap actually opens up.",
     "First-Home Urban Starters returns 0.29x. Family Upgraders returns 1.71x, roughly six "
     "times better. FHB costs ฿13,404 per loan against ฿2,616, takes ฿335k of a ฿630k budget, "
     "and returns ฿66M. The Optimizer returns ฿68M on ฿170k, so the same money buys about "
     "twice the lending somewhere else."),
-   ("/loan_funnel?seat=owner", "chart:Cohort maturity", None,
+   ("/loan_funnel", "chart:Cohort maturity", None,
     "Before cutting, check the number is not just young data.",
     "Read DOWN a column to compare weeks fairly. About 30% of every segment's leads are "
     "under four weeks old, so immaturity is dragging all five down together, not FHB alone."),
-   ("/loan_funnel?seat=owner", "text:Maturity gate", None,
+   ("/loan_funnel", "text:Maturity gate", None,
     "Toggle the gate. Here it confirms the finding rather than rescuing it.",
     "Gating lifts FHB's application rate from 23.9% to 28.1%, and every other segment by a "
     "similar 3 to 4 points. The ranking does not change, so maturity is not the explanation."),
-   ("/loan_funnel?seat=owner", "text:Stage to stage", None,
+   ("/loan_funnel", "text:Stage to stage", None,
     "Now the verdict. FHB converts fine. It is the price that is wrong.",
     "All five segments convert within a few points of each other. The entire spread is in "
     "cost, not quality, which means this is a bidding and targeting problem for the agency, "
@@ -172,15 +179,15 @@ FLOWS = [
              "challenged before they are believed.",
   "meta": ["2 clicks", "about 20 seconds", "output: a stamped CSV"],
   "steps": [
-   ("/business?seat=owner", "text:Data as of", None,
+   ("/business", "text:Data as of", None,
     "Check the freshness strip before you quote anything.",
     "Five sources, each with its own as-of date. This footer is on every page, so the check "
     "costs nothing and happens before the meeting rather than during it."),
-   ("/business?seat=owner", "text:KPI definitions", None,
+   ("/business", "text:KPI definitions", None,
     "The definition version travels with the number.",
     "v1.1 corrected three denominators. A number quoted under v1.0 is not comparable to one "
     "quoted under v1.1, which is exactly why the version is on screen."),
-   ("/engagement?seat=owner", "text:Export scorecard", None,
+   ("/engagement", "text:Export scorecard", None,
     "Export at the current filters. Counts and baht only.",
     "Rates are left derived so the recipient can re-aggregate. Contact fields are never "
     "included in an owner export."),
@@ -192,25 +199,25 @@ FLOWS = [
              "together and have to be keyed one by one.",
   "meta": ["keyboard only", "under 25s per record", "output: an appended event"],
   "steps": [
-   ("/worklist?seat=admin", "text:SLA compliance", None,
+   ("/worklist", "text:SLA compliance", None,
     "The queue header tells you how far behind follow-up already is.",
     "21% SLA compliance and a median of 26 hours against a 24-hour target. These numbers "
     "only exist because outcomes get keyed, which is the job on this screen."),
-   ("/worklist?seat=admin", "text:Key an outcome", None,
+   ("/worklist", "text:Key an outcome", None,
     "Paste the lead id or phone straight from the branch report.",
     "The field is the entry point, not a menu. No mouse needed from here on."),
-   ("/worklist?seat=admin", "text:30d waiting",
+   ("/worklist", "text:30d waiting",
     [["fill", "input[aria-label='Lead id or phone']", "L200041"], ["press", "Enter"],
      ["wait", 2500]],
     "The record resolves inline. Check the name and branch match the report.",
     "Name, lead id, branch, stage and how long it has been waiting, all before you type "
     "anything else."),
-   ("/worklist?seat=admin", "text:Reason (required",
+   ("/worklist", "text:Reason (required",
     [["fill", "input[aria-label='Lead id or phone']", "L200041"], ["press", "Enter"],
      ["wait", 2500]],
     "Tab to status, then reason. Reason is mandatory on a terminal status.",
     "Free text is never a substitute for a reason code, because free text cannot feed a KPI."),
-   ("/worklist?seat=admin", "text:Save and next",
+   ("/worklist", "text:Save and next",
     [["fill", "input[aria-label='Lead id or phone']", "L200041"], ["press", "Enter"],
      ["wait", 2500]],
     "Enter saves and returns focus to the field for the next record.",
@@ -222,16 +229,16 @@ FLOWS = [
   "trigger": "An hour later the branch says the status was for a different customer.",
   "meta": ["3 clicks", "output: a correcting event, not an edit"],
   "steps": [
-   ("/worklist?seat=admin", "text:Key an outcome", None,
+   ("/worklist", "text:Key an outcome", None,
     "Pull the record back up the same way you keyed it.",
     "Corrections use the same entry point as the original, so there is nothing new to learn."),
-   ("/worklist?seat=admin", "text:Reason (required",
+   ("/worklist", "text:Reason (required",
     [["fill", "input[aria-label='Lead id or phone']", "L200041"], ["press", "Enter"],
      ["wait", 2500]],
     "Choose keying_correction from the reason list.",
     "There is no edit and no delete anywhere on this screen. A correction is a new event, "
     "which is why the reason list carries a code for it."),
-   ("/worklist?seat=admin", "text:Save and next",
+   ("/worklist", "text:Save and next",
     [["fill", "input[aria-label='Lead id or phone']", "L200041"], ["press", "Enter"],
      ["wait", 2500]],
     "Save. Both the error and its correction stay on the record.",
@@ -244,23 +251,98 @@ FLOWS = [
              "on a broken feed.",
   "meta": ["2 clicks", "output: a verdict, and an acknowledgement the owner can see"],
   "steps": [
-   ("/?seat=admin", "text:Data as of", None,
+   ("/", "text:Data as of", None,
     "The freshness strip is on every page. A red chip is your entry point.",
     "In this mock all five sources are green, so there is nothing red to click today. On a "
     "bad day the stale source is the one you click."),
-   ("/data_health?seat=admin", "text:Branch keying", None,
+   ("/data_health", "text:Branch keying", None,
     "Branch keying is the manual source, and the one that goes stale.",
     "It goes stale exactly when the worklist has not been worked, so a stale feed here and a "
     "keying backlog are the same failure wearing two hats."),
-   ("/data_health?seat=admin", "text:Lead → CIF", None,
+   ("/data_health", "text:Lead → CIF", None,
     "Match rates are what decide whether a number is quotable at all.",
     "Unmatched leads are counted and shown, never dropped. A rising unmatched count is the "
     "earliest warning that the funnel is understated."),
-   ("/data_health?seat=admin", "text:Acknowledge", None,
+   ("/data_health", "text:Acknowledge", None,
     "Acknowledge a known issue so the owner sees amber instead of red.",
     "Amber tells the owner somebody is on it. That one action serves both seats."),
   ]},
+
+ {"id": "S9", "seat": "admin", "title": "Setting a campaign up",
+  "trigger": "A second campaign is being planned, and the target set here is "
+             "what the owner's pace bullet measures against.",
+  "meta": ["one form", "6 blocks", "output: a campaign, and a change-log entry"],
+  "steps": [
+   ("/campaign_setup", "text:Campaign setup", None,
+    "Pick a campaign, or start a new one.",
+    "The registry everything joins on. Two fields here unblock work elsewhere: "
+    "the target, and the canonical UTM tag every ad must stamp."),
+   ("/campaign_setup", "text:Objective", None,
+    "Six blocks, not a flat form. These are the categories the workshop argues about.",
+    "Objective, product and target customer, campaign target, period and finance, "
+    "roles, measurement. Taken from the senior's task 1 plus the brief §4 fields."),
+   ("/campaign_setup", "text:Change log", None,
+    "Every saved change lands here as a structured event.",
+    "A reason is required on an edit. Without it the log records what changed and "
+    "never why, which is the half anyone needs a month later."),
+  ]},
+
+ {"id": "S10", "seat": "admin", "title": "Importing the target lead list",
+  "trigger": "The finalized lead list arrives from the data team before launch.",
+  "meta": ["2 clicks", "output: the targeted half of the Overview grid"],
+  "steps": [
+   ("/leads_import", "text:Current list", None,
+    "An import is versioned: which file, when, by whom, how many rows.",
+    "Replacing the list keeps the previous version on disk, so a bad import is "
+    "recoverable rather than final."),
+   ("/leads_import", "text:Summary", None,
+    "Summary by age, income, occupation and region.",
+    "The senior's task 2. This shape is what the Overview grid compares the "
+    "achieved population against."),
+   ("/leads_import", "text:Import a new list", None,
+    "Upload replaces the list. Rows missing a required field are rejected and counted.",
+    "Rejected rows are shown, never silently dropped, so a partial import cannot "
+    "quietly shrink the denominator of everything downstream."),
+  ]},
+
+ {"id": "S11", "seat": "campaign owner",
+  "title": "Did we reach the people we aimed at?",
+  "trigger": "Mid-campaign. The volume looks fine, but volume says nothing about "
+             "whether the right people arrived.",
+  "meta": ["1 click", "output: a targeting verdict"],
+  "steps": [
+   ("/", "text:Targeted vs achieved", None,
+    "Two grids, same axes, counts inside. Left is who we aimed at, right is who came.",
+    "One grid is descriptive. The pair supports a decision, because the difference "
+    "between them is the thing you can act on."),
+   ("/", "text:Row-share drift", None,
+    "Read the drift figure before reading the cells.",
+    "34% of the achieved population sits in a different age band than intended. "
+    "0% would mean the campaign reached exactly who it aimed at."),
+   ("/", "text:Rows", None,
+    "Switch the axes to test whether the drift is age, income, occupation or region.",
+    "Both grids switch together and share their axes, so they stay comparable "
+    "rather than becoming two tables that happen to sit side by side."),
+  ]},
 ]
+
+
+
+def sign_in_if_needed(page, seat):
+    """Fill the sign-in form when it is showing. After submitting, the app
+    returns to the page the URL asked for, with its filters intact."""
+    try:
+        if page.locator('input[type="password"]').count() == 0:
+            return False
+        user, pw = CREDS[seat]
+        page.locator('input[type="text"]').first.fill(user)
+        page.locator('input[type="password"]').first.fill(pw)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(4200)
+        return True
+    except Exception as e:                                  # noqa: BLE001
+        print(f"    !! sign-in failed: {e}", file=sys.stderr)
+        return False
 
 
 def main():
@@ -277,7 +359,9 @@ def main():
             entries = []
             for n, (path, target, do, label, caption) in enumerate(flow["steps"], 1):
                 page.goto(BASE + path, wait_until="networkidle")
-                page.wait_for_timeout(2600)
+                page.wait_for_timeout(2200)
+                if sign_in_if_needed(page, flow["seat"]):
+                    page.wait_for_timeout(2200)
                 for act in (do or []):
                     try:
                         if act[0] == "fill":

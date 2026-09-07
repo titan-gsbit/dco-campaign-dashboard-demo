@@ -46,7 +46,7 @@ with sync_playwright() as p:
              footer_template=(
                  '<div style="width:100%;font:9px Arial;color:#8c8a86;'
                  'padding:0 12mm;display:flex;justify-content:space-between">'
-                 "<span>DCO campaign &middot; five paths through the dashboard</span>"
+                 "<span>DCO campaign &middot; paths through the dashboard</span>"
                  '<span class="pageNumber"></span></div>'))
     browser.close()
 

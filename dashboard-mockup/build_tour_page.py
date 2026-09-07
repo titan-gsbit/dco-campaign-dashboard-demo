@@ -134,14 +134,24 @@ footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--rule);
 }
 """
 
-TOP = {"S2", "S3", "S6", "S7", "S8"}
+# Scope comes from capture_tour.TOP, imported rather than restated. S4 is
+# captured but deliberately out of the deliverable: it covered tasks nobody
+# ranked in the top three, and existed only to pad the owner to three paths.
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, HERE)
+from capture_tour import TOP  # noqa: E402
 steps = [f for f in steps if f["id"] in TOP]
 
 SEAT_ORDER = ["campaign owner", "admin"]
+SEAT_TITLE = {"campaign owner": "campaign owner", "admin": "marketing"}
 by_seat = {k: [f for f in steps if f["seat"] == k] for k in SEAT_ORDER}
+_n_paths = len(steps)
+_n_steps = sum(len(f["steps"]) for f in steps)
+_n_owner = len(by_seat["campaign owner"])
+_n_admin = len(by_seat["admin"])
 
 parts = [
-    "<title>Five Paths Through the Dashboard</title>",
+    "<title>Paths Through the Dashboard</title>",
     '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
     "family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&"
     'display=swap">',
@@ -149,22 +159,22 @@ parts = [
     '<div class="wrap">',
     '<section class="cover">',
     '<div class="eyebrow">GSB \u00b7 DCO housing loan campaign</div>',
-    "<h1>Five paths through the dashboard</h1>",
-    '<p class="sub">Two paths for the campaign owner, three for the admin. The tasks that '
+    f"<h1>{_n_paths} paths through the dashboard</h1>",
+    f'<p class="sub">{_n_owner} for the campaign owner, {_n_admin} for marketing. The tasks that '
     "require navigating rather than reading a single screen, each shown step by step on the "
     "real interface.</p>",
     "<dl>"
     "<dt>Prepared</dt><dd>7 September 2026</dd>"
-    "<dt>Covers</dt><dd>5 paths, 22 steps, both seats</dd>"
+    f"<dt>Covers</dt><dd>{_n_paths} paths, {_n_steps} steps, both seats</dd>"
     "<dt>Screens</dt><dd>Captured from the running dashboard, not mocked up</dd>"
     "<dt>Companions</dt><dd>Task list workbook \u00b7 FigJam flow boards \u00b7 seat map</dd>"
     "</dl>",
     "</section>",
     '<header class="hero">',
     '<div class="eyebrow">GSB · DCO campaign · click-through tutorials</div>',
-    "<h1>Five paths through the dashboard</h1>",
+    f"<h1>{_n_paths} paths through the dashboard</h1>",
     '<p class="lede">The tasks that actually require navigating, rather than reading one '
-    "screen: two for the campaign owner, three for the admin. Every image is the real dashboard captured from the running app, "
+    f"screen: {_n_owner} for the campaign owner, {_n_admin} for marketing. Every image is the real dashboard captured from the running app, "
     "with the thing to click ringed in pink. Each step carries the URL that opens that exact "
     "screen, so you can follow along in the app instead of only reading about it.</p>",
     '<nav class="toc">',
@@ -175,14 +185,14 @@ for seat in SEAT_ORDER:
 parts.append("</nav></header>")
 
 for seat in SEAT_ORDER:
-    parts.append(f'<h2 class="seatband">{seat}</h2>')
+    parts.append(f'<h2 class="seatband">{SEAT_TITLE[seat]}</h2>')
     for rank, fl in enumerate(by_seat[seat], 1):
         parts += [
             f'<section class="flow" id="{fl["id"]}">',
             '<div class="fhead">',
             f'<span class="fid">{fl["id"]}</span>',
             f"<h3>{fl['title']}</h3>",
-            f'<span class="rank">{seat} #{rank}</span>',
+            f'<span class="rank">{SEAT_TITLE[seat]} #{rank}</span>',
             "</div>",
             '<div class="meta">'
             + "".join(f"<span>{m}</span>" for m in fl["meta"]) + "</div>",
