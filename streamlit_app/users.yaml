@@ -1,9 +1,0 @@
-users:
-  marketing.gsb:
-    name: Marketing (GSB)
-    password: pbkdf2$240000$48b2e76d5e7ab0e7214eb76498b62d7d$d4063fe3ece2db2aec4c3d56f20cf6bc0477f04603b2ba47832b057e36ab20d0
-    role: marketing
-  owner.gsb:
-    name: Campaign owner (GSB)
-    password: pbkdf2$240000$6fba0e3c8ff7921d7632f0ecb9ddbf4b$c507e3756195db0de1454926f8683b782e6a9dc7e531b9658b94e6c1cecae007
-    role: viewer
