@@ -235,6 +235,61 @@ def customer_view() -> pd.DataFrame:
     return cv
 
 
+# ---------------- page registry + deep-link routing ----------------
+# One source of truth for pages: the navigation is built from it, and so is the
+# after-login redirect, so a link can never resolve to a page the menu does not
+# offer.  (module, file stem, title, icon)
+PAGES = [
+    ("", [("overview", "exec", "Overview", ":material/speed:")]),
+    ("Campaign tracking", [
+        ("engagement", "engagement", "Engagement", ":material/ads_click:"),
+        ("lead_quality", "lead_quality", "Lead quality", ":material/verified:"),
+        ("loan_funnel", "loan_funnel", "Loan funnel", ":material/filter_alt:"),
+        ("business", "business", "Business KPI", ":material/payments:"),
+    ]),
+    ("Customers", [
+        ("worklist", "worklist", "Worklist", ":material/checklist:"),
+        ("customers", "customers", "Customer list", ":material/group:"),
+        ("customer_detail", "customer_detail", "Customer detail", ":material/person:"),
+    ]),
+    ("Operate", [
+        ("campaign_setup", "campaign_setup", "Campaign setup", ":material/tune:"),
+        ("leads_import", "leads_import", "Target leads", ":material/upload_file:"),
+        ("data_health", "data_health", "Data health", ":material/monitor_heart:"),
+    ]),
+    ("Reference", [
+        ("dictionary", "dictionary", "KPI dictionary", ":material/function:"),
+        ("account", "login", "Account", ":material/account_circle:"),
+    ]),
+]
+
+STEM_TO_MODULE = {stem: mod for _g, items in PAGES for mod, stem, _t, _i in items}
+
+
+def destination_from_url(url: str | None):
+    """What page and filters did this link ask for?
+
+    A deep link always starts a fresh browser session, so it always hits the
+    login form. Capturing the destination first is what stops every documented
+    step URL from dumping the visitor on Overview with no filters.
+    """
+    from urllib.parse import urlparse, parse_qs
+    if not url:
+        return None
+    u = urlparse(url)
+    stem = u.path.strip("/").split("/")[-1]
+    params = {k: v[0] for k, v in parse_qs(u.query).items()}
+    if not stem and not params:
+        return None
+    return {"stem": stem, "params": params}
+
+
+def resolve_page(stem: str):
+    """Page file for a URL stem, or None if it is not a real page."""
+    mod = STEM_TO_MODULE.get(stem)
+    return (mod, f"app_pages/{stem}.py") if mod else None
+
+
 # ---------------- drill / filter model ----------------
 # every clickable chart element is just a WHERE clause on customer_view
 FILTERS = {

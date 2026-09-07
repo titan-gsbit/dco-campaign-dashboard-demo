@@ -169,3 +169,43 @@ def add_user(user: str, name: str, pw: str, user_role: str) -> tuple[bool, str]:
     users[user] = {"name": name, "role": user_role, "password": hash_password(pw)}
     save_users(users)
     return True, f"Added {user} as {ROLE_LABEL[user_role]}."
+
+
+def render_signin() -> None:
+    """The sign-in screen, rendered without st.navigation.
+
+    That constraint is load-bearing. Streamlit resolves the route before the
+    script runs, so registering only the login page makes a deep link to
+    /customers 404 and rewrites the URL to /, losing the path before any of our
+    code can read it. With no navigation at all, st.context.url keeps the path
+    and the destination survives the login it triggered.
+    """
+    import pandas as pd
+
+    st.markdown("### DCO Housing Loan Campaign")
+    st.caption("GSB · campaign tracking and CRM")
+    st.divider()
+    left, right = st.columns([1, 1], gap="large")
+    with left:
+        st.subheader("Sign in")
+        with st.form("signin"):
+            u = st.text_input("Username", placeholder="marketing.gsb")
+            p_ = st.text_input("Password", type="password")
+            if st.form_submit_button("Sign in", type="primary", width="stretch"):
+                ok, msg = sign_in(u.strip(), p_)
+                if ok:
+                    st.rerun()
+                else:
+                    st.error(msg)
+    with right:
+        st.subheader("Demo accounts")
+        st.caption("Mock data only. Replace with GSB SSO before anything real "
+                   "reaches this system.")
+        st.dataframe(pd.DataFrame([
+            {"Username": "marketing.gsb", "Password": "dco-marketing",
+             "Seat": "Marketing", "Can": "Everything, including writes"},
+            {"Username": "owner.gsb", "Password": "dco-owner",
+             "Seat": "Campaign owner", "Can": "Read only, contact fields masked"},
+        ]), hide_index=True, width="stretch")
+        st.caption("Passwords are salted and hashed (PBKDF2-HMAC-SHA256); the "
+                   "plain values above exist only because this is a demo.")

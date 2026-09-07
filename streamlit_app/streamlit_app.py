@@ -11,10 +11,26 @@ if "drill" not in st.session_state:
 # ---- authentication gate (T2) ----------------------------------------------
 # Nobody reaches a KPI page before signing in. The seat now comes from the user
 # record rather than a picker, so every write is attributable to a named person.
+#
+# A deep link always starts a fresh browser session, so it always lands here.
+# Without remembering where the visitor was headed, every documented step URL
+# (/customers?stage=Booked&...) would dump them on Overview with no filters,
+# which would quietly break the flow tutorials and the workbook's Link column.
 if not auth.is_authenticated():
-    st.navigation([st.Page("app_pages/login.py", title="Sign in",
-                           icon=":material/login:")], position="hidden").run()
+    # No st.navigation here on purpose: see auth.render_signin. Registering pages
+    # before sign-in makes Streamlit resolve (and lose) the requested path.
+    if "_intended" not in st.session_state:
+        st.session_state._intended = common.destination_from_url(
+            getattr(st.context, "url", None))
+    auth.render_signin()
     st.stop()
+
+# Put the query string back before anything reads it: showing the login page
+# rewrites the URL, so the filters that came in with the link are gone by now.
+_dest = st.session_state.pop("_intended", None)
+if _dest and _dest.get("params"):
+    for k, v in _dest["params"].items():
+        st.query_params[k] = v
 
 common.pull_drill_from_url()
 if "maturity_gate" not in st.session_state:
@@ -42,29 +58,8 @@ with st.sidebar:
 # The nav is built FROM the permission table, so it can never disagree with the
 # page guards about who sees what.
 P = "app_pages/"
-GROUPS = [
-    ("", [("overview", "exec.py", "Overview", ":material/speed:")]),
-    ("Campaign tracking", [
-        ("engagement", "engagement.py", "Engagement", ":material/ads_click:"),
-        ("lead_quality", "lead_quality.py", "Lead quality", ":material/verified:"),
-        ("loan_funnel", "loan_funnel.py", "Loan funnel", ":material/filter_alt:"),
-        ("business", "business.py", "Business KPI", ":material/payments:"),
-    ]),
-    ("Customers", [
-        ("worklist", "worklist.py", "Worklist", ":material/checklist:"),
-        ("customers", "customers.py", "Customer list", ":material/group:"),
-        ("customer_detail", "customer_detail.py", "Customer detail", ":material/person:"),
-    ]),
-    ("Operate", [
-        ("campaign_setup", "campaign_setup.py", "Campaign setup", ":material/tune:"),
-        ("leads_import", "leads_import.py", "Target leads", ":material/upload_file:"),
-        ("data_health", "data_health.py", "Data health", ":material/monitor_heart:"),
-    ]),
-    ("Reference", [
-        ("dictionary", "dictionary.py", "KPI dictionary", ":material/function:"),
-        ("account", "login.py", "Account", ":material/account_circle:"),
-    ]),
-]
+GROUPS = [(g, [(mod, stem + ".py", title, icon) for mod, stem, title, icon in items])
+          for g, items in common.PAGES]
 
 pages = {}
 for group, items in GROUPS:
@@ -78,6 +73,17 @@ page = st.navigation(pages, position="top")
 
 # Two homes: marketing enters via a queue, the campaign owner via a number.
 HOME = {"marketing": P + "worklist.py", "viewer": P + "exec.py"}
+
+# Land on the page the link asked for, if this seat may read it.
+if _dest and _dest.get("stem"):
+    hit = common.resolve_page(_dest["stem"])
+    if hit and (hit[0] == "account" or auth.can_read(hit[0])):
+        st.session_state._last_role = role
+        st.switch_page(hit[1])
+    elif hit:
+        st.warning(f"Your seat cannot open **{_dest['stem']}**. Showing your home "
+                   f"page instead.", icon=":material/lock:")
+
 if st.session_state.get("_last_role") not in (None, role):
     st.session_state._last_role = role
     st.switch_page(HOME[role])

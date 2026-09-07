@@ -13,33 +13,7 @@ st.markdown("### DCO Housing Loan Campaign")
 st.caption("GSB · campaign tracking and CRM")
 
 if not auth.is_authenticated():
-    st.divider()
-    left, right = st.columns([1, 1], gap="large")
-
-    with left:
-        st.subheader("Sign in")
-        with st.form("signin"):
-            u = st.text_input("Username", placeholder="marketing.gsb")
-            p = st.text_input("Password", type="password")
-            if st.form_submit_button("Sign in", type="primary", width="stretch"):
-                ok, msg = auth.sign_in(u.strip(), p)
-                if ok:
-                    st.rerun()
-                else:
-                    st.error(msg)
-
-    with right:
-        st.subheader("Demo accounts")
-        st.caption("Mock data only. Replace with GSB SSO before anything real "
-                   "reaches this system.")
-        st.dataframe(pd.DataFrame([
-            {"Username": "marketing.gsb", "Password": "dco-marketing",
-             "Seat": "Marketing", "Can": "Everything, including writes"},
-            {"Username": "owner.gsb", "Password": "dco-owner",
-             "Seat": "Campaign owner", "Can": "Read only, contact fields masked"},
-        ]), hide_index=True, width="stretch")
-        st.caption("Passwords are salted and hashed (PBKDF2-HMAC-SHA256); the "
-                   "plain values above exist only because this is a demo.")
+    auth.render_signin()
     st.stop()
 
 # ---------------- signed in ----------------

@@ -78,3 +78,26 @@ print(f"ok formulas approval {kpi.approval_rate(cv):.1%} (decided {kpi.approval_
 for key, d in kpi.REGISTRY.items():
     assert d.name and d.num and d.source or not d.source, key
 print(f"ok registry {len(kpi.REGISTRY)} KPIs defined")
+
+# ---- deep links survive the login they trigger ----
+d = common.destination_from_url(
+    "http://localhost:8507/customers?stage=Booked&branch_name=%E0%B8%AA%E0%B8%B2%E0%B8%82%E0%B8%B2")
+assert d["stem"] == "customers", d
+assert d["params"]["stage"] == "Booked", d
+assert d["params"]["branch_name"].startswith("สาขา"), "url-encoded Thai must decode"
+assert common.destination_from_url("http://localhost:8507/") is None, \
+    "a bare root URL is not a destination"
+assert common.destination_from_url(None) is None
+
+mod, path = common.resolve_page("customers")
+assert (mod, path) == ("customers", "app_pages/customers.py"), (mod, path)
+assert common.resolve_page("not_a_page") is None
+# every registered page must exist on disk, or a link resolves to a 404
+import os  # noqa: E402
+for _g, items in common.PAGES:
+    for _mod, stem, _t, _i in items:
+        assert os.path.exists(f"app_pages/{stem}.py"), f"missing page file {stem}.py"
+# and the nav registry must agree with the permission table
+regs = {m for _g, items in common.PAGES for m, _s, _t, _i in items} - {"account"}
+assert regs == set(auth.PERMISSIONS), (regs ^ set(auth.PERMISSIONS))
+print(f"ok routing   {len(regs)} pages, registry and permissions agree")
