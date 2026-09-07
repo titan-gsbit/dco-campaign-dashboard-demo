@@ -101,3 +101,35 @@ for _g, items in common.PAGES:
 regs = {m for _g, items in common.PAGES for m, _s, _t, _i in items} - {"account"}
 assert regs == set(auth.PERMISSIONS), (regs ^ set(auth.PERMISSIONS))
 print(f"ok routing   {len(regs)} pages, registry and permissions agree")
+
+# ---- the qualified-lead rule (C1, settled v1.2) ----
+# The three buckets must be disjoint, or a status silently counts twice.
+assert not (kpi.QUALIFIED_STATUSES & kpi.DISQUALIFIED_STATUSES)
+assert not (kpi.QUALIFIED_STATUSES & kpi.UNSCREENED_STATUSES)
+assert not (kpi.DISQUALIFIED_STATUSES & kpi.UNSCREENED_STATUSES)
+
+# Every status GSB actually uses must be classified, or leads vanish from both
+# the numerator and the denominator without anyone noticing.
+import sys as _s, os as _o  # noqa: E402
+_s.path.insert(0, _o.path.join(_o.path.dirname(_o.getcwd()), "dashboard-mockup"))
+import gsb_vocab as _v  # noqa: E402
+_all = kpi.QUALIFIED_STATUSES | kpi.DISQUALIFIED_STATUSES | kpi.UNSCREENED_STATUSES
+_unclassified = set(_v.LEAD_STATUSES_TH) - _all
+assert not _unclassified, f"GSB statuses with no bucket: {_unclassified}"
+
+# And every status present in the data must be classified too.
+_in_data = set(cv.lead_status.dropna().unique()) - {"Duplicate Lead"}
+assert not (_in_data - _all), f"mock statuses with no bucket: {_in_data - _all}"
+
+# Unreachable leads are NOT qualified. That conflation is the whole point of the
+# rule: it made a follow-up backlog look like a targeting problem.
+_cc = cv[cv.lead_status == "Cannot Contact"]
+assert len(_cc) and not len(kpi.qualified_leads(_cc)), \
+    "leads nobody reached must not count as qualified"
+assert not len(kpi.screened_leads(_cc)), \
+    "leads nobody reached must not sit in the denominator either"
+
+assert kpi.screening_coverage(cv) < 1.0, "coverage of 100% means nothing is pending"
+print(f"ok qualified {kpi.qualified_rate(cv):.1%} of screened, "
+      f"coverage {kpi.screening_coverage(cv):.0%}, all {len(_v.LEAD_STATUSES_TH)} "
+      f"GSB statuses classified")

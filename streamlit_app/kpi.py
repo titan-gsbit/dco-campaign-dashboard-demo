@@ -19,10 +19,49 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-VERSION = "v1.1"
+VERSION = "v1.2"
 
 # denominators that changed in v1.1 - any number quoted before this needs the caveat
 CHANGED_IN_V11 = {"approval_rate", "application_rate", "contact_rate"}
+# v1.2 defines "qualified" from GSB's own status list, which also moves the
+# application-rate denominator, since that divides by qualified leads.
+CHANGED_IN_V12 = {"qualified_rate", "application_rate"}
+
+# ---------------------------------------------------------------------------
+# What "qualified" means (KPI dictionary C1, settled 7 Sep 2026)
+#
+# The deck asks for "จำนวน Lead ที่ผ่านการคัดกรองเบื้องต้น" - leads that passed
+# preliminary screening. GSB's droplead สถานะ field already records that, and it
+# separates three different judgements a single flag collapses:
+#
+#   eligibility  did they meet the bank's criteria
+#   intent       do they still want this product
+#   reachability did anyone actually get hold of them
+#
+# A lead nobody reached has not been screened, so it belongs in neither the
+# numerator nor the denominator. Counting it as unqualified makes a follow-up
+# backlog look like a targeting problem, and those two go to different people:
+# level 3 is the admin's queue, level 1-2 is the agency's media. That is the same
+# error class as the v1.1 contact-rate fix, which stopped dividing by all leads.
+# Reach is already measured, separately, by contact rate.
+QUALIFIED_STATUSES = {
+    "สนใจใช้บริการ",              # interested in the service
+    "ยื่นใบคำขอกู้เรียบร้อย",        # loan application submitted
+    # canonical equivalents in the mock
+    "Contacted", "Document Pending", "Interested", "Application Submitted",
+}
+DISQUALIFIED_STATUSES = {
+    "ไม่ตรงตามหลักเกณฑ์เงื่อนไขของธนาคาร",   # does not meet the bank's criteria
+    "ไม่สนใจใช้บริการ",                  # not interested
+    "สนใจผลิตภัณฑ์อื่นของธนาคาร",         # wants a different product: not this campaign
+    "Not Qualified", "Not Interested",
+}
+UNSCREENED_STATUSES = {
+    "ติดต่อไม่ได้",        # never reached, so never screened
+    "ให้ติดต่อใหม่",       # call back later, still pending
+    "ยังไม่ดำเนินการ",     # not yet actioned: keying backlog, not lead quality
+    "Cannot Contact", "New", "Assigned", "Contact Attempted",
+}
 
 
 @dataclass
@@ -68,8 +107,16 @@ def assigned_leads(cv):
     return cv[cv.assigned_ts.notna()]
 
 
+def screened_leads(cv):
+    """Leads somebody actually assessed. Excludes the unreached and the
+    unworked, and excludes duplicates, which are not separate people."""
+    return cv[cv.lead_status.isin(QUALIFIED_STATUSES | DISQUALIFIED_STATUSES)
+              & ~cv.duplicate_flag]
+
+
 def qualified_leads(cv):
-    return cv[cv.qualified_flag & ~cv.duplicate_flag]
+    """Screened, eligible, and still interested in this product."""
+    return cv[cv.lead_status.isin(QUALIFIED_STATUSES) & ~cv.duplicate_flag]
 
 
 def submitted_applications(cv):
@@ -128,10 +175,19 @@ def leads(cv): return len(cv)
 def cost_per_lead(cv, media): return _rate(media.spend_thb.sum(), len(cv))
 
 
-@kpi("Qualified lead rate", "qualified leads", "completed leads",
-     source="lead", exclusions="duplicates excluded from the numerator",
-     brief="brief 7 - ratio settled, screening rule still open (U1)")
-def qualified_rate(cv): return _rate(len(qualified_leads(cv)), len(cv))
+@kpi("Qualified lead rate", "qualified leads", "screened leads",
+     source="lead.สถานะ",
+     exclusions="duplicates, and leads nobody screened yet: never reached, "
+                "awaiting callback, or not yet actioned",
+     brief="brief 7 + deck L3. Rule settled v1.2 from GSB's own status list")
+def qualified_rate(cv): return _rate(len(qualified_leads(cv)), len(screened_leads(cv)))
+
+
+@kpi("Screening coverage", "screened leads", "completed leads", source="lead.สถานะ",
+     exclusions="the honesty check on qualified rate: how much of the lead book "
+                "has actually been assessed",
+     brief="v1.2. A high qualified rate on low coverage is not good news")
+def screening_coverage(cv): return _rate(len(screened_leads(cv)), len(cv))
 
 
 @kpi("Contact rate", "contacted leads", "assigned leads",

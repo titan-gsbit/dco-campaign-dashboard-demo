@@ -16,9 +16,29 @@ st.title("KPI dictionary")
 st.caption(f"Definition version `{kpi.VERSION}` · attribution `{camp.attribution_rule}` "
            f"/ {camp.attribution_window_days} days · every rate derived, never stored")
 
-st.info("Three denominators changed in **v1.1** to match the best-practice brief §7. "
-        "Numbers quoted from an earlier version are not comparable.",
+st.info("**v1.2** settles what *qualified* means, from GSB's own droplead status "
+        "list. That also moves application rate, which divides by qualified leads. "
+        "**v1.1** corrected three denominators against the brief §7. Numbers quoted "
+        "under an earlier version are not comparable to these.",
         icon=":material/history:")
+
+with st.expander("What 'qualified' means, and why unreached leads are excluded"):
+    st.markdown(
+        "The deck asks for leads that passed preliminary screening — "
+        "*ผ่านการคัดกรองเบื้องต้น*. GSB's `สถานะ` field already records that, and it "
+        "separates three judgements a single flag collapses: **eligibility**, "
+        "**intent**, and **reachability**.\n\n"
+        "A lead nobody reached has not been screened, so it sits in neither the "
+        "numerator nor the denominator. Counting it as unqualified makes a "
+        "follow-up backlog look like a targeting problem, and those go to "
+        "different people. Reach is measured separately, by contact rate.")
+    st.dataframe(pd.DataFrame(
+        [{"สถานะ": s, "Counts as": b} for b, ss in
+         [("Qualified", sorted(kpi.QUALIFIED_STATUSES)),
+          ("Not qualified", sorted(kpi.DISQUALIFIED_STATUSES)),
+          ("Not screened — excluded from both", sorted(kpi.UNSCREENED_STATUSES))]
+         for s in ss if not s.isascii()]),
+        hide_index=True, width="stretch")
 
 rows = [{
     "kpi": d.name,
@@ -27,7 +47,8 @@ rows = [{
     "gate": "matured cohorts" if d.gated else "—",
     "exclusions": d.exclusions or "—",
     "spec": d.brief or "—",
-    "changed": "v1.1" if key in kpi.CHANGED_IN_V11 else "",
+    "changed": ("v1.2" if key in kpi.CHANGED_IN_V12 else
+                "v1.1" if key in kpi.CHANGED_IN_V11 else ""),
 } for key, d in kpi.REGISTRY.items()]
 
 df = pd.DataFrame(rows)

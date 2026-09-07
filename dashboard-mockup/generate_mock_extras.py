@@ -50,7 +50,7 @@ pd.DataFrame([{
     "attribution_rule": "last_click",
     "attribution_window_days": 30,
     "control_group_pct": 8.0,
-    "kpi_def_version": "v1.1",
+    "kpi_def_version": "v1.2",
     "owner_user_id": "owner.gsb",
 }]).to_csv(os.path.join(OUT, "campaign.csv"), index=False)
 
