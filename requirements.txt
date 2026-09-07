@@ -1,4 +1,8 @@
-streamlit>=1.63
-altair>=5.5
-pandas>=2.2
-numpy>=2.1
+# Pinned to the versions the smoke test passes against. Loose pins let the
+# Streamlit Cloud builder resolve something newer that changes an API the app
+# uses (st.container(horizontal=...), st.column_config.ButtonColumn), and the
+# failure shows up as a blank deployed app rather than a local error.
+streamlit==1.63.0
+altair==5.5.0
+pandas==2.2.3
+numpy==2.1.3
