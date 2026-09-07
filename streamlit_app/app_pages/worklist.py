@@ -5,7 +5,7 @@ import common
 import kpi
 from common import baht
 
-common.guard_admin("The worklist")
+common.guard_admin(module="worklist")
 cv = common.customer_view()
 now = common.as_of()
 
@@ -62,7 +62,7 @@ with st.container(border=True):
                         st.error("A reason code is required on a terminal status.")
                     else:
                         common.write_status(r.lead_id, new_status, reason, note,
-                                            actor=f"demo-{common.role()}", actor_role=common.role())
+                                            actor=common.actor(), actor_role=common.role())
                         st.session_state.wl_jump = ""
                         st.toast(f"{r.lead_id} → {new_status}. Event appended, nothing overwritten.")
                         st.rerun()
@@ -89,7 +89,7 @@ show["open"] = ":material/person: open"
 
 def _log():
     lead = show.iloc[st.session_state.wl_att.row]["lead_id"]
-    common.log_attempt(lead, "no_answer", f"demo-{common.role()}", common.role())
+    common.log_attempt(lead, "no_answer", common.actor(), common.role())
     st.toast(f"Attempt logged on {lead}")
 
 def _open():
@@ -97,7 +97,7 @@ def _open():
     st.session_state.list_order = show.lead_id.tolist()
     st.switch_page("app_pages/customer_detail.py")
 
-can_write = common.role() in common.WRITE_ROLES
+can_write = common.can_write("worklist")
 col_cfg = {
     "lead_id": "Lead", "name": "Name", "branch_name": "Branch", "stage": "Stage",
     "days_in_stage": "Days waiting", "contact_attempts": "Attempts",

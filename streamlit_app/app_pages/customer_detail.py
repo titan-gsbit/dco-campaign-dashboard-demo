@@ -96,7 +96,7 @@ with c2:
                         st.error("A reason code is required on a terminal status.")
                     else:
                         common.write_status(lead_id, new_status, reason, note,
-                                            actor=f"demo-{common.role()}", actor_role=common.role())
+                                            actor=common.actor(), actor_role=common.role())
                         st.toast("Saved — event appended, nothing overwritten")
                         st.rerun()
         else:

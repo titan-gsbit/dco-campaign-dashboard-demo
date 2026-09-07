@@ -13,12 +13,35 @@ import kpi
 from common import baht
 
 cv = common.customer_view()
-media, *_ = common.load()
+media, prospects, *_ = common.load()
 cs, ctrl, camp = common.crosssell(), common.control_group(), common.campaign()
+target_list = common.target_leads()  # not `target`: that is the baht target
 now = common.as_of()
 
 st.title("Overview")
-st.caption(f"{camp['name']} · {camp.status} · {camp.start_date} → {camp.end_date}")
+
+# ---- T5a: campaign profile. Senior's task 1 fields, read from the registry ---
+with st.container(border=True):
+    head = st.container(horizontal=True)
+    head.markdown(f"### {camp['name']}")
+    head.markdown(f":violet-badge[{camp.status}]")
+    st.caption(camp.objective)
+    p = st.container(horizontal=True)
+    p.metric("Product", str(camp["product"]))
+    p.metric("Period", f"{camp.start_date} → {camp.end_date}")
+    p.metric("Target", f"฿{camp.target_disbursed_ge3m_thb/1e6:,.0f}M",
+             help="Disbursed value from loans of ฿3M or more.")
+    p.metric("Budget", f"฿{camp.budget_thb/1e6:,.1f}M")
+    p.metric("Owner", str(camp.owner_user_id))
+    p.metric("Attribution", f"{camp.attribution_rule} / {camp.attribution_window_days}d")
+    if common.can_write("campaign_setup"):
+        try:
+            st.page_link("app_pages/campaign_setup.py", label="Edit campaign",
+                         icon=":material/tune:")
+        except Exception:                       # noqa: BLE001
+            # page_link needs the navigation context, which is absent when a
+            # page is rendered in isolation (the smoke test does exactly that).
+            st.caption(":material/tune: Edit on the Campaign setup page.")
 
 # ---- O1: pace against plan. The number the owner is asked about. -------------
 actual, target, expected, pct = kpi.pace(cv, camp, now)
@@ -117,6 +140,65 @@ with col2, st.container(border=True):
         include_groups=False).cumsum().cumsum().rename("Interest accrued")
     st.line_chart(pd.concat([ms, daily_int], axis=1).ffill().fillna(0),
                   color=["#6f6d6a", "#b8296e"], height=280)
+
+# ---- T5b: who we aimed at, against who we got --------------------------------
+# Two grids, same axes, counts inside. One grid alone is descriptive; the pair
+# shows targeting drift, which is the decision the table can actually support.
+with st.container(border=True):
+    st.subheader("Targeted vs achieved")
+    DIMS = {"Age band": "age_band", "Income band": "income_band",
+            "Occupation": "occupation", "Region": "region"}
+    d1, d2 = st.columns(2)
+    rows_dim = d1.selectbox("Rows", list(DIMS), index=0)
+    cols_dim = d2.selectbox("Columns", list(DIMS), index=1)
+    rk, ck = DIMS[rows_dim], DIMS[cols_dim]
+
+    if rk == ck:
+        st.warning("Pick two different dimensions.", icon=":material/error:")
+    elif not len(target_list):
+        st.info("No target list imported yet, so there is nothing to compare against. "
+                "Import one on the Target leads page.", icon=":material/inbox:")
+    else:
+        # achieved = prospects who became leads; that is the population the
+        # campaign actually reached, and where age and income live.
+        got = cv.merge(prospects[["prospect_id", "age_band", "income_band",
+                                  "occupation"]],
+                       on="prospect_id", how="left", suffixes=("", "_p"))
+        got["region"] = got.get("region", pd.Series(index=got.index, dtype=object))
+
+        def grid(df, r, c):
+            if r not in df.columns or c not in df.columns:
+                return pd.DataFrame()
+            d = df.dropna(subset=[r, c])
+            return pd.crosstab(d[r], d[c]) if len(d) else pd.DataFrame()
+
+        g_t, g_a = grid(target_list, rk, ck), grid(got, rk, ck)
+        if g_a.empty:
+            st.info(f"The achieved population has no {cols_dim.lower()} on it. "
+                    f"Age and income come from the application feed; region comes "
+                    f"from the branch. Try a different pair.", icon=":material/info:")
+        else:
+            # share the axes so the two grids are genuinely comparable
+            idx = sorted(set(g_t.index) | set(g_a.index))
+            col = sorted(set(g_t.columns) | set(g_a.columns))
+            g_t = g_t.reindex(index=idx, columns=col, fill_value=0)
+            g_a = g_a.reindex(index=idx, columns=col, fill_value=0)
+            l, r = st.columns(2)
+            with l:
+                st.caption(f"**Targeted** · {len(target_list):,} leads on the imported list")
+                st.dataframe(g_t.style.background_gradient(cmap="Greys", axis=None),
+                             width="stretch")
+            with r:
+                st.caption(f"**Achieved** · {len(got):,} leads the campaign produced")
+                st.dataframe(g_a.style.background_gradient(cmap="PuRd", axis=None),
+                             width="stretch")
+            # the one number that says whether targeting held
+            ts = (g_t.sum(axis=1) / max(g_t.to_numpy().sum(), 1))
+            as_ = (g_a.sum(axis=1) / max(g_a.to_numpy().sum(), 1))
+            drift = (as_ - ts).abs().sum() / 2
+            st.caption(f"Row-share drift **{drift:.0%}** — how much of the achieved "
+                       f"population sits in a different {rows_dim.lower()} than "
+                       f"intended. 0% means the campaign reached exactly who it aimed at.")
 
 # ---- segment table with drill ------------------------------------------------
 with st.container(border=True):

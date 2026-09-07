@@ -121,3 +121,102 @@ leads_full.loc[unassigned, "assigned_ts"] = pd.NaT
 leads_full.to_csv(os.path.join(OUT, "leads.csv"), index=False)
 print(f"leads.csv             {int(unassigned.sum())} of {len(leads_full)} unassigned "
       f"({fresh.sum()} awaiting routing, {int((dropped & ~fresh).sum())} fell through)")
+
+# ---- T1 · speak GSB's language ---------------------------------------------
+# Swaps the invented English dimensions for GSB's own code lists, and adds the
+# two bands the Overview cross-tab needs. Column NAMES are unchanged so the
+# pages and kpi.py keep working; only the values change, plus three new columns.
+#
+# Deliberately NOT localised yet: lead_status and app_status. common.py derives
+# the funnel stage from those exact strings, so swapping them is a wider change
+# than tonight's three asks need. The Thai status list is in gsb_vocab as
+# LEAD_STATUSES_TH and APP_STATUSES, ready for that pass.
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gsb_vocab as V  # noqa: E402
+
+pros = pd.read_csv(os.path.join(OUT, "prospects.csv"))
+lead2 = pd.read_csv(os.path.join(OUT, "leads.csv"))
+apps2 = pd.read_csv(os.path.join(OUT, "applications.csv"))
+
+# Real GSB branch hierarchy. The mock had six invented branches; GSB gave 68
+# real ones under 26 districts and 5 regions, so leads now route somewhere real.
+rng2 = np.random.default_rng(42)
+n_br = min(len(V.BRANCHES), 24)                      # keep the queue readable
+branch_pool = pd.DataFrame({
+    "branch_name": V.BRANCHES[:n_br],
+    "region": rng2.choice(V.REGIONS, n_br),
+    "district": rng2.choice(V.DISTRICTS, n_br),
+})
+branch_pool["branch_id"] = [f"BR-{i:03d}" for i in range(1, n_br + 1)]
+pick = rng2.integers(0, n_br, len(lead2))
+for col in ["branch_id", "branch_name", "region", "district"]:
+    lead2[col] = branch_pool[col].to_numpy()[pick]
+
+# Age and income bands: the axes of the Overview cross-tab. Neither existed in
+# the mock, and neither exists on droplead in the real feed either, so they are
+# attached to the prospect, which is where lorapp carries them.
+pros["age_band"] = rng2.choice(V.AGE_BANDS, len(pros))
+pros["income_band"] = rng2.choice(V.INCOME_BANDS, len(pros))
+pros["occupation"] = rng2.choice(V.OCCUPATIONS, len(pros))
+pros["sub_occupation"] = rng2.choice(V.SUB_OCCUPATIONS, len(pros))
+
+# MARKET_CODE_SETUP_DESC_TH is the closest thing GSB has to a campaign label.
+apps2["market_project"] = rng2.choice(V.MARKET_PROJECTS, len(apps2))
+apps2["product_th"] = V.LOAN_PRODUCTS[0]
+
+pros.to_csv(os.path.join(OUT, "prospects.csv"), index=False)
+lead2.to_csv(os.path.join(OUT, "leads.csv"), index=False)
+apps2.to_csv(os.path.join(OUT, "applications.csv"), index=False)
+branch_pool.to_csv(os.path.join(OUT, "branch_dim.csv"), index=False)
+
+# ---- GA feeds, shaped exactly like the real export -------------------------
+# Aggregate daily by landing page. No UTM, no session id, no channel: that is
+# what GSB's GA extract actually contains (finding F2, data request DR2).
+days = pd.date_range(CAMPAIGN_START, CAMPAIGN_END, freq="D")
+page = V.LANDING_PAGES[0]
+ga = pd.DataFrame({
+    "Date": days,
+    "Landing page": page,
+    "Time on Page": np.round(rng2.normal(165, 38, len(days)), 0).clip(20, 400).astype(int),
+    "Total users": rng2.poisson(48, len(days)) + 5,
+})
+ga.to_csv(os.path.join(OUT, "ga_landing.csv"), index=False)
+
+rows = []
+for _, r in ga.iterrows():
+    reach = 1.0
+    for th in sorted(V.SCROLL_THRESHOLDS, key=float):
+        reach *= rng2.uniform(0.62, 0.88)            # each depth loses people
+        rows.append({"Date": r["Date"], "Landing page": page,
+                     "scroll_depth_threshold": th,
+                     "Total users": int(r["Total users"] * reach)})
+pd.DataFrame(rows).to_csv(os.path.join(OUT, "ga_scroll.csv"), index=False)
+
+print(f"branch_dim.csv        {n_br} real GSB branches")
+print(f"prospects.csv         +age_band +income_band +occupation +sub_occupation")
+print(f"ga_landing.csv        {len(ga)} days · ga_scroll.csv {len(rows)} rows "
+      f"(aggregate only, no UTM — DR2)")
+
+# ---- T4 · a target lead list, the "targeted" half of the Overview cross-tab --
+# Senior's task 2: the finalized lead list imported before the campaign runs.
+# Deliberately drawn with a DIFFERENT age/income mix from the prospects who
+# actually converted, because a targeted-vs-achieved grid that matches perfectly
+# teaches nothing. The drift is the point.
+tgt_n = 4200
+age_w = np.array([0.04, 0.24, 0.30, 0.22, 0.13, 0.05, 0.02])
+inc_w = np.array([0.03, 0.08, 0.20, 0.26, 0.21, 0.13, 0.09])
+target = pd.DataFrame({
+    "target_lead_id": [f"TL{i:06d}" for i in range(tgt_n)],
+    "age_band": rng2.choice(V.AGE_BANDS, tgt_n, p=age_w / age_w.sum()),
+    "income_band": rng2.choice(V.INCOME_BANDS, tgt_n, p=inc_w / inc_w.sum()),
+    "occupation": rng2.choice(V.OCCUPATIONS, tgt_n),
+    "region": rng2.choice(V.REGIONS, tgt_n),
+    "product": V.LOAN_PRODUCTS[0],
+    "campaign_id": "DCO2026",
+    "imported_at": "2026-08-28 09:00:00",
+    "imported_by": "marketing.gsb",
+    "source_file": "GSB_final_lead_list_2026-08-28.xlsx",
+})
+target.to_csv(os.path.join(OUT, "target_leads.csv"), index=False)
+print(f"target_leads.csv      {tgt_n} rows (the targeted grid)")

@@ -15,9 +15,9 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "dashboard-mockup" / "mock_data
 # Two seats (seat-map v3). The brief section 12 lists eight roles, but that is the
 # governance model of a finished CRM; we are at phase 1-2. A third seat, `branch`,
 # arrives later as the write module scoped by branch_id.
-ROLES = ["admin", "campaign_owner"]
-WRITE_ROLES = {"admin"}                     # the only human write path
-UNMASKED_ROLES = {"admin"}                  # who sees raw contact fields
+ROLES = ["marketing", "viewer"]
+WRITE_ROLES = {"marketing"}                 # the only human write path
+UNMASKED_ROLES = {"marketing"}              # who sees raw contact fields
 ADMIN_ONLY_PAGES = {"worklist", "data_health", "campaign_setup"}
 
 FIRST = ["Somchai", "Suda", "Anong", "Prasit", "Kanya", "Wichai", "Malee", "Thanawat",
@@ -69,15 +69,102 @@ def load():
 
 
 @st.cache_data(ttl=600)
-def campaign():
-    """The registry row. Every query filters on campaign_id so a second campaign
-    costs a WHERE clause, not a refactor (seat map S9)."""
-    return pd.read_csv(DATA_DIR / "campaign.csv").iloc[0]
+def campaign(campaign_id=None):
+    """The active campaign row. Every query filters on campaign_id so a second
+    campaign costs a WHERE clause, not a refactor (seat map S9)."""
+    df = pd.read_csv(DATA_DIR / "campaign.csv")
+    cid = campaign_id or st.session_state.get("campaign_id")
+    if cid and cid in set(df.campaign_id):
+        return df[df.campaign_id == cid].iloc[0]
+    return df.iloc[0]
+
+
+@st.cache_data(ttl=600)
+def campaigns():
+    """All campaigns. The registry was one row and read-only until T3."""
+    return pd.read_csv(DATA_DIR / "campaign.csv")
+
+
+def save_campaign(row: dict, actor_user: str):
+    """Create or update one campaign, and record the change (senior's task 10).
+
+    Every field edit becomes a change-log row, which is what lets a chart be
+    annotated later with "this moved because we changed that".
+    """
+    df = pd.read_csv(DATA_DIR / "campaign.csv")
+    cid = row["campaign_id"]
+    now = str(pd.Timestamp.now().floor("s"))
+    changes = []
+    if cid in set(df.campaign_id):
+        old = df[df.campaign_id == cid].iloc[0]
+        for k, v in row.items():
+            if k.startswith("_"):
+                continue          # _reason is metadata about the change, not a field
+            if str(old.get(k, "")) != str(v):
+                changes.append({"effective": now, "campaign_id": cid, "user": actor_user,
+                                "change": k, "from": old.get(k, ""), "to": v,
+                                "reason": row.get("_reason", "")})
+        for k, v in row.items():
+            if not k.startswith("_"):
+                df.loc[df.campaign_id == cid, k] = v
+    else:
+        changes.append({"effective": now, "campaign_id": cid, "user": actor_user,
+                        "change": "campaign_created", "from": "", "to": cid,
+                        "reason": row.get("_reason", "")})
+        df = pd.concat([df, pd.DataFrame([{k: v for k, v in row.items()
+                                           if not k.startswith("_")}])],
+                       ignore_index=True)
+    df.to_csv(DATA_DIR / "campaign.csv", index=False)
+    if changes:
+        log = DATA_DIR / "campaign_changelog.csv"
+        prev = pd.read_csv(log) if log.exists() else pd.DataFrame()
+        pd.concat([prev, pd.DataFrame(changes)], ignore_index=True).to_csv(log, index=False)
+    st.cache_data.clear()
+    return len(changes)
+
+
+@st.cache_data(ttl=600)
+def change_log(campaign_id=None):
+    f = DATA_DIR / "campaign_changelog.csv"
+    if not f.exists():
+        return pd.DataFrame(columns=["effective", "campaign_id", "user", "change",
+                                     "from", "to", "reason"])
+    df = pd.read_csv(f)
+    return df[df.campaign_id == campaign_id] if campaign_id else df
 
 
 @st.cache_data(ttl=600)
 def crosssell():
     return pd.read_csv(DATA_DIR / "crosssell_monthly.csv", parse_dates=["month"])
+
+
+@st.cache_data(ttl=600)
+def target_leads():
+    """The finalized target list (T4). Empty frame if none imported yet, so the
+    Overview grid can say 'no target list' rather than crash."""
+    f = DATA_DIR / "target_leads.csv"
+    if not f.exists():
+        return pd.DataFrame(columns=["target_lead_id", "age_band", "income_band",
+                                     "occupation", "region", "imported_at",
+                                     "imported_by", "source_file"])
+    return pd.read_csv(f)
+
+
+def import_target_leads(df, source_file, actor_user):
+    """Replace the target list, keeping the previous version beside it. An
+    import is versioned: which file, when, by whom, how many rows."""
+    out = df.copy()
+    out["imported_at"] = str(pd.Timestamp.now().floor("s"))
+    out["imported_by"] = actor_user
+    out["source_file"] = source_file
+    if "target_lead_id" not in out.columns:
+        out.insert(0, "target_lead_id", [f"TL{i:06d}" for i in range(len(out))])
+    cur = DATA_DIR / "target_leads.csv"
+    if cur.exists():
+        stamp = pd.Timestamp.now().strftime("%Y%m%d-%H%M%S")
+        cur.rename(DATA_DIR / f"target_leads.{stamp}.bak.csv")
+    out.to_csv(cur, index=False)
+    st.cache_data.clear()
 
 
 @st.cache_data(ttl=600)
@@ -226,11 +313,22 @@ def altair_click(event, param="sel", field=None):
 
 
 def role():
-    return st.session_state.get("role", "campaign_owner")
+    """Delegates to auth. Kept as a shim so pages need no change, and so the
+    seat can never be set by anything other than signing in."""
+    import auth
+    return auth.role()
 
 
-def can_write():
-    return role() in WRITE_ROLES
+def actor():
+    """Who to record on a write. This is why login had to exist: `changed_by`
+    is only meaningful if it names a person."""
+    import auth
+    return auth.username()
+
+
+def can_write(module=None):
+    import auth
+    return auth.can_write(module)
 
 
 def mask_phone(v):
@@ -242,9 +340,15 @@ def mask_phone(v):
     return f"XXX-XXX-{s[-4:]}" if len(s) >= 4 else "XXX-XXX-XXXX"
 
 
-def guard_admin(page="This page"):
+def guard_admin(page="This page", module=None):
+    """Second line of defence. The nav already omits pages a seat cannot read;
+    this catches anyone typing the URL."""
+    import auth
+    if module:
+        auth.guard(module)
+        return
     if not can_write():
-        st.error(f":material/lock: {page} is admin-only. "
+        st.error(f":material/lock: {page} is for the Marketing seat. "
                  "Your seat reads every KPI page, but does not write.")
         st.stop()
 

@@ -9,7 +9,7 @@ import streamlit as st
 
 import common
 
-common.guard_admin("Data health")
+common.guard_admin(module="data_health")
 
 media, prospects, sessions, leads, apps, loans, events = common.load()
 cv = common.customer_view()

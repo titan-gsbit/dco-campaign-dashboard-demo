@@ -1,107 +1,145 @@
-"""Campaign setup - admin only (use cases A4, A5, A7).
+"""Campaign setup: create and edit (checklist T3, senior's task 1).
 
 The registry everything else hangs off. Two fields here unblock things
 elsewhere: the target is the denominator of the owner's pace bullet, and the
 UTM tag is what every ad must stamp for attribution to survive a lost click id.
 
-Laid out as the brief's section 4 categories rather than a flat form, because
-the categories are what the workshop will argue about.
+Laid out as the senior's six blocks plus the brief §4 measurement fields,
+because those categories are what the workshop will argue about.
 """
 import pandas as pd
 import streamlit as st
 
 import common
 
-common.guard_admin("Campaign setup")
+common.guard_admin(module="campaign_setup")
 
-camp = common.campaign()
-cv = common.customer_view()
-
+camps = common.campaigns()
 st.title("Campaign setup")
-st.caption("The registry the best-practice brief §4 requires. Mock: reads `campaign.csv`, "
-           "saves nothing. Production writes the registry and versions every change.")
 
-st.markdown(f"### {camp['name']}  ·  :violet-badge[{camp.status}]")
+# ---- pick, or start a new one ----------------------------------------------
+ids = list(camps.campaign_id)
+NEW = "+ New campaign"
+top = st.container(horizontal=True)
+choice = top.selectbox("Campaign", ids + [NEW],
+                       index=ids.index(st.session_state.get("campaign_id", ids[0]))
+                       if st.session_state.get("campaign_id", ids[0]) in ids else 0)
+creating = choice == NEW
+if not creating:
+    st.session_state.campaign_id = choice
+    row = camps[camps.campaign_id == choice].iloc[0].to_dict()
+else:
+    row = {"campaign_id": "", "name": "", "product": "housing", "objective": "",
+           "status": "Draft", "start_date": str(pd.Timestamp.today().date()),
+           "end_date": str((pd.Timestamp.today() + pd.Timedelta(days=90)).date()),
+           "target_disbursed_ge3m_thb": 0, "target_leads": 0, "budget_thb": 0,
+           "planned_cpl_thb": 0, "cost_owner": "", "utm_tag": "",
+           "attribution_rule": "last_click", "attribution_window_days": 30,
+           "control_group_pct": 8.0, "kpi_def_version": "v1.1", "owner_user_id": ""}
 
-TABS = st.tabs(["Business", "Schedule & finance", "Audience", "Measurement", "Change log", "Access"])
+st.caption("Six blocks from the senior's task 1, plus the measurement fields the "
+           "best-practice brief §4 requires. Saving records every changed field "
+           "in the change log.")
 
-with TABS[0]:
-    st.text_input("Objective", camp.objective)
-    c = st.container(horizontal=True)
-    c.text_input("Campaign id", camp.campaign_id, disabled=True)
-    c.text_input("Product", camp["product"])
-    st.number_input("KPI target — disbursed ฿ from loans ≥ ฿3M", value=int(camp.target_disbursed_ge3m_thb),
-                    step=10_000_000,
-                    help="This is the denominator of the owner's pace bullet. Without it, "
-                         "use case O1 cannot be answered at all.")
-    st.number_input("Target leads", value=int(camp.target_leads), step=100)
-    st.caption("The north-star is *incremental* disbursed value from loans of ฿3M or more. "
-               "฿3M is a per-loan ticket threshold, not the campaign target.")
+LIFECYCLE = ["Draft", "Pending Approval", "Scheduled", "Running", "Paused",
+             "Completed", "Archived"]
 
-with TABS[1]:
-    c = st.container(horizontal=True)
-    c.date_input("Start", pd.Timestamp(camp.start_date))
-    c.date_input("End", pd.Timestamp(camp.end_date))
-    c.selectbox("Status", ["Draft", "Pending Approval", "Scheduled", "Running",
-                           "Paused", "Completed", "Archived"],
-                index=3, help="Brief §4 campaign lifecycle.")
-    c2 = st.container(horizontal=True)
-    c2.number_input("Budget ฿", value=int(camp.budget_thb), step=100_000)
-    c2.number_input("Planned CPL ฿", value=int(camp.planned_cpl_thb), step=50)
-    c2.text_input("Cost owner", camp.cost_owner)
-
-with TABS[2]:
-    st.text_input("Canonical UTM tag", camp.utm_tag,
-                  help="Every ad must stamp this. It is the fallback attribution join "
-                       "when the click id is lost, and it drives the missing-UTM trust KPI.")
-    st.multiselect("Target segments", sorted(cv.segment.unique()),
-                   default=sorted(cv.segment.unique()))
-    st.slider("Control group %", 0.0, 20.0, float(camp.control_group_pct), 0.5,
-              help="The holdout. Carving one retroactively is not possible once the "
-                   "campaign is live at scale — this decision has an expiry date.")
-
-with TABS[3]:
-    c = st.container(horizontal=True)
-    c.selectbox("Attribution rule", ["last_click", "first_click", "lead_source_campaign", "multi_touch"],
-                index=0, help="Brief §10: fix this before launch and retain the rule version. "
-                              "Every attributed number already assumes an answer.")
-    c.number_input("Attribution window (days)", value=int(camp.attribution_window_days), step=1)
-    c.text_input("KPI definition version", camp.kpi_def_version, disabled=True,
-                 help="Bumped in kpi.py. v1.1 corrected three denominators against brief §7.")
-    st.info("Numbers produced under an earlier definition version are not comparable to "
-            "these. That is why the version travels with every export.", icon=":material/info:")
-
-with TABS[4]:
-    st.caption("Every material change is a structured event, not a comment — so it can be "
-               "pinned to a chart at the right x position (brief §5).")
-    st.dataframe(pd.DataFrame([
-        {"effective": "2026-10-14 10:00", "user": "admin.gsbit", "change": "creative",
-         "from": "CR-A-ratecut", "to": "CR-B-calculator",
-         "reason": "CTR 30% below target for Bangkok Income 100K+"},
-        {"effective": "2026-10-28 09:30", "user": "admin.gsbit", "change": "budget",
-         "from": "฿180k/wk", "to": "฿240k/wk", "reason": "OPT segment CPL best in class"},
-        {"effective": "2026-11-04 14:00", "user": "admin.gsbit", "change": "kpi_definition",
-         "from": "v1.0", "to": "v1.1", "reason": "approval/application/contact denominators per brief §7"},
-    ]), hide_index=True, width="stretch")
-    with st.form("changelog"):
+with st.form("campaign"):
+    T = st.tabs(["1 Objective", "2 Product & target customer", "3 Campaign target",
+                 "4 Period & finance", "5 Roles", "6 Measurement"])
+    v = {}
+    with T[0]:
+        a = st.container(horizontal=True)
+        v["campaign_id"] = a.text_input("Campaign id", row["campaign_id"],
+                                        disabled=not creating,
+                                        help="Immutable. Everything joins on it.")
+        v["name"] = a.text_input("Campaign name", row["name"])
+        v["objective"] = st.text_area("Objective", row["objective"], height=80)
+        v["status"] = st.selectbox("Status", LIFECYCLE,
+                                   index=LIFECYCLE.index(row["status"])
+                                   if row["status"] in LIFECYCLE else 0)
+    with T[1]:
+        b = st.container(horizontal=True)
+        v["product"] = b.text_input("Product", row["product"])
+        v["utm_tag"] = b.text_input("Canonical UTM tag", row["utm_tag"],
+                                    help="Every ad must stamp this. It is the fallback "
+                                         "attribution join when the click id is lost.")
+        st.caption("Target customer detail comes from the imported lead list. "
+                   "Import it on the **Target leads** page; its age, income and "
+                   "occupation shape is what the Overview grid compares against.")
+    with T[2]:
+        v["target_disbursed_ge3m_thb"] = st.number_input(
+            "Target — disbursed ฿ from loans ≥ ฿3M",
+            value=int(row["target_disbursed_ge3m_thb"]), step=10_000_000,
+            help="The denominator of the pace bullet. Without it, 'are we on plan' "
+                 "cannot be answered at all.")
+        v["target_leads"] = st.number_input("Target leads", value=int(row["target_leads"]),
+                                            step=100)
+        st.caption("฿3M is a per-loan ticket threshold, not the campaign target. The "
+                   "north-star is *incremental* disbursed value from loans that size.")
+    with T[3]:
         c = st.container(horizontal=True)
-        c.selectbox("Change type", ["budget", "creative", "audience", "landing_page",
-                                    "targeting", "kpi_definition", "status"])
-        c.text_input("From")
-        c.text_input("To")
-        st.text_input("Reason and expected impact",
-                      placeholder="CTR 30% below target for the Bangkok Income 100K+ audience")
-        if st.form_submit_button("Record change", type="primary"):
-            st.toast("Mock: recorded. Production appends an event and annotates every chart.")
+        v["start_date"] = str(c.date_input("Start", pd.Timestamp(row["start_date"])))
+        v["end_date"] = str(c.date_input("End", pd.Timestamp(row["end_date"])))
+        d = st.container(horizontal=True)
+        v["budget_thb"] = d.number_input("Budget ฿", value=int(row["budget_thb"]),
+                                         step=100_000)
+        v["planned_cpl_thb"] = d.number_input("Planned CPL ฿",
+                                              value=int(row["planned_cpl_thb"]), step=50)
+    with T[4]:
+        e = st.container(horizontal=True)
+        v["cost_owner"] = e.text_input("Cost owner", row["cost_owner"])
+        v["owner_user_id"] = e.text_input("Campaign owner (username)", row["owner_user_id"],
+                                          help="Scopes that user to this campaign. "
+                                               "Create the user on the Account page.")
+        st.warning("Brief §12 requires **maker-checker** on campaigns: one person acts, "
+                   "a second approves. One Marketing seat cannot satisfy that. Either a "
+                   "second seat arrives, or the waiver is written down.",
+                   icon=":material/gpp_maybe:")
+    with T[5]:
+        f = st.container(horizontal=True)
+        RULES = ["last_click", "first_click", "lead_source_campaign", "multi_touch"]
+        v["attribution_rule"] = f.selectbox(
+            "Attribution rule", RULES,
+            index=RULES.index(row["attribution_rule"])
+            if row["attribution_rule"] in RULES else 0,
+            help="Brief §10: fix this before launch and keep the rule version. Every "
+                 "attributed number already assumes an answer.")
+        v["attribution_window_days"] = f.number_input(
+            "Attribution window (days)", value=int(row["attribution_window_days"]), step=1)
+        v["control_group_pct"] = st.slider(
+            "Control group %", 0.0, 20.0, float(row["control_group_pct"]), 0.5,
+            help="The holdout. Once the campaign runs at scale it cannot be carved "
+                 "retroactively, so this decision has an expiry date.")
+        v["kpi_def_version"] = row["kpi_def_version"]
 
-with TABS[5]:
-    st.caption("Assigning an owner to a campaign is what makes future scoping a WHERE clause "
-               "rather than a refactor.")
-    st.dataframe(pd.DataFrame([
-        {"user": "admin.gsbit", "seat": "admin", "scope": "all campaigns", "writes": "yes"},
-        {"user": camp.owner_user_id, "seat": "campaign_owner", "scope": camp.campaign_id, "writes": "no"},
-    ]), hide_index=True, width="stretch")
-    st.warning("The brief §12 requires **maker-checker** on campaigns and audience exports — "
-               "one person acts, a second approves. A single admin seat cannot satisfy that. "
-               "Either the second seat arrives early, or the waiver is written down.",
-               icon=":material/gpp_maybe:")
+    v["_reason"] = st.text_input("Reason for this change",
+                                 placeholder="Budget raised after week-4 review")
+    saved = st.form_submit_button("Create campaign" if creating else "Save changes",
+                                  type="primary")
+
+if saved:
+    if not v["campaign_id"].strip():
+        st.error("Campaign id is required.")
+    elif creating and v["campaign_id"] in ids:
+        st.error(f"Campaign {v['campaign_id']} already exists.")
+    elif not v["_reason"].strip() and not creating:
+        st.error("A reason is required. It is what makes the change log useful "
+                 "later, when somebody asks why a number moved.")
+    else:
+        n = common.save_campaign(v, common.actor())
+        st.session_state.campaign_id = v["campaign_id"]
+        st.success(f"{'Created' if creating else 'Saved'} — {n} change(s) logged.")
+        st.rerun()
+
+# ---- change log -------------------------------------------------------------
+with st.container(border=True):
+    st.subheader("Change log")
+    st.caption("Senior's task 10. Every material change is a structured event, not a "
+               "comment, so it can be pinned to a chart at the right position.")
+    log = common.change_log(None if creating else choice)
+    if not len(log):
+        st.info("No changes recorded yet.", icon=":material/history:")
+    else:
+        st.dataframe(log.sort_values("effective", ascending=False),
+                     hide_index=True, width="stretch")

@@ -5,12 +5,18 @@ from streamlit.testing.v1 import AppTest
 READ_PAGES = ["app_pages/exec.py", "app_pages/engagement.py", "app_pages/lead_quality.py",
               "app_pages/loan_funnel.py", "app_pages/business.py", "app_pages/customers.py",
               "app_pages/customer_detail.py", "app_pages/dictionary.py"]
-ADMIN_PAGES = ["app_pages/worklist.py", "app_pages/data_health.py", "app_pages/campaign_setup.py"]
+ADMIN_PAGES = ["app_pages/worklist.py", "app_pages/data_health.py",
+               "app_pages/campaign_setup.py", "app_pages/leads_import.py"]
+
+USERS = {"marketing": {"username": "marketing.gsb", "name": "Marketing (GSB)",
+                       "role": "marketing"},
+         "viewer": {"username": "owner.gsb", "name": "Campaign owner (GSB)",
+                    "role": "viewer"}}
 
 
 def run(page, role, extra=None):
     at = AppTest.from_file(page, default_timeout=90)
-    at.session_state["role"] = role
+    at.session_state["auth_user"] = USERS[role]
     at.session_state["drill"] = {}
     at.session_state["maturity_gate"] = True
     for k, v in (extra or {}).items():
@@ -23,18 +29,29 @@ def run(page, role, extra=None):
 LEAD = {"selected_lead": "L200041", "list_order": ["L200041"]}
 
 for p in READ_PAGES + ADMIN_PAGES:
-    run(p, "admin", LEAD)
-    print("ok admin  ", p)
+    run(p, "marketing", LEAD)
+    print("ok marketing", p)
 
 for p in READ_PAGES:
-    run(p, "campaign_owner", LEAD)
-    print("ok owner  ", p)
+    run(p, "viewer", LEAD)
+    print("ok viewer   ", p)
 
-# the gate: admin-only pages must stop the owner
+# the gate: write pages must stop the read-only seat
 for p in ADMIN_PAGES:
-    at = run(p, "campaign_owner")
-    assert at.error, f"{p} should be admin-only"
-print("ok gate    owner blocked from", ADMIN_PAGES)
+    at = run(p, "viewer")
+    assert at.error, f"{p} should be marketing-only"
+print("ok gate      viewer blocked from", len(ADMIN_PAGES), "write pages")
+
+# auth itself
+import auth  # noqa: E402
+h = auth.hash_password("correct horse")
+assert auth.verify_password("correct horse", h), "password verify broken"
+assert not auth.verify_password("wrong", h), "password verify accepts anything"
+assert "$" in h and "correct horse" not in h, "password stored in the clear"
+assert auth.PERMISSIONS["worklist"]["read"] == {"marketing"}, "worklist not gated"
+assert not any("viewer" in v["write"] for v in auth.PERMISSIONS.values()), \
+    "viewer has a write permission somewhere"
+print(f"ok auth      {len(auth.PERMISSIONS)} modules, viewer writes nothing")
 
 # ---- the three corrected denominators (seat map F1-F3) ----
 import common, kpi  # noqa: E402
