@@ -9,8 +9,16 @@ if "drill" not in st.session_state:
 if "role" not in st.session_state:
     # ?seat=admin makes a seat linkable — handy for demos, and it is the only way
     # to drive the seat picker from a test or a screenshot script.
-    seat = st.query_params.get("seat", "campaign_owner")
+    # "owner" is an alias so documented links stay short and readable
+    seat = {"owner": "campaign_owner"}.get(st.query_params.get("seat", ""), st.query_params.get("seat", ""))
     st.session_state.role = seat if seat in ("admin", "campaign_owner") else "campaign_owner"
+
+common.pull_drill_from_url()
+
+# ?gate=off makes the maturity gate linkable too, so a flow step can say
+# "with the gate off" and prove it rather than describing it.
+if "maturity_gate" not in st.session_state:
+    st.session_state.maturity_gate = st.query_params.get("gate", "on") != "off"
 
 SEAT_HELP = {
     "admin": "Reads everything unmasked, and holds the only human write path.",

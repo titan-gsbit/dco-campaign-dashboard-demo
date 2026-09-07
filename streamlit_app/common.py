@@ -167,10 +167,44 @@ FILTERS = {
 }
 
 
+# Filters that round-trip through the URL as plain strings. `aging` (a tuple) and
+# `unmatched` (a bare flag) are deliberately excluded: they are chart-local and not
+# worth the encoding. Everything else makes a drill state shareable and linkable.
+URL_FILTERS = ["creative_id", "channel", "segment", "branch_name", "stage", "reached",
+               "lost_reason", "decline_reason", "customer_type", "product"]
+
+
 def drill(**kv):
     """Stack filters and jump to the customer list."""
     st.session_state.drill = {**st.session_state.get("drill", {}), **kv}
+    push_drill_to_url()
     st.switch_page("app_pages/customers.py")
+
+
+def push_drill_to_url():
+    """Mirror the drill state into the address bar so any screen state is a link.
+
+    This is what makes a navigation flow point at the real app: every step in a
+    documented click path is a URL that reopens the dashboard exactly there,
+    instead of a screenshot that goes stale the next time the UI moves.
+    """
+    d = st.session_state.get("drill", {})
+    for k in URL_FILTERS:
+        v = d.get(k)
+        if v in (None, ""):
+            st.query_params.pop(k, None)
+        else:
+            st.query_params[k] = str(v)
+
+
+def pull_drill_from_url():
+    """Seed the drill state from ?stage=Booked&segment=... on first load."""
+    if st.session_state.get("_url_drill_read"):
+        return
+    st.session_state._url_drill_read = True
+    incoming = {k: st.query_params[k] for k in URL_FILTERS if st.query_params.get(k)}
+    if incoming:
+        st.session_state.drill = {**st.session_state.get("drill", {}), **incoming}
 
 
 def apply_drill(cv):

@@ -31,8 +31,9 @@ m.metric("Median hrs to contact", f"{kpi.lead_to_contact_hrs(cv):.0f}h",
          help="Brief §3 SLA: first attempt within 24 hours.")
 
 # ---- S6: key an outcome without touching the mouse --------------------------
-# The load-bearing interaction. If this is slower than LINE plus a spreadsheet,
-# the data supply stops and eight KPIs downstream go stale.
+# The load-bearing interaction. If this is slower than whatever branches use
+# today, the data supply stops and eight KPIs downstream go stale. How outcomes
+# actually arrive is still an open question for the GSB workshop.
 with st.container(border=True):
     st.subheader("Key an outcome")
     st.caption("Paste a lead id or phone from the branch report, then Tab → status → "

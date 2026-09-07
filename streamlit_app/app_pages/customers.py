@@ -47,6 +47,20 @@ q = st.text_input("Search", placeholder="name or lead id", label_visibility="col
 if q:
     cv = cv[cv.name.str.contains(q, case=False) | cv.lead_id.str.contains(q, case=False)]
 
+# Seat map C4: the owner's drill has to terminate in something copyable, because
+# they cannot act on what they found. Without this the path is a dead end.
+if len(st.session_state.get("drill", {})):
+    with st.container(border=True):
+        c1, c2 = st.columns([3, 1])
+        chips = ", ".join(f"{FILTERS[k][0]}: {v}" for k, v in st.session_state.drill.items()
+                          if k in FILTERS)
+        summary = (f"{len(common.apply_drill(cv_all)):,} leads | {chips} | "
+                   f"requested {common.baht(common.apply_drill(cv_all).requested_amt_thb.sum(), m=True)} | "
+                   f"as of {common.as_of():%d %b %Y}")
+        c1.code(summary, language=None)
+        c2.caption("Copy this into your message to the admin. "
+                   "You cannot change a lead, so the path ends here.")
+
 m = st.container(horizontal=True)
 m.metric("Customers", f"{len(cv):,} / {len(cv_all):,}")
 m.metric("Requested", baht(cv.requested_amt_thb.sum(), m=True))
