@@ -20,28 +20,38 @@ now = common.as_of()
 
 st.title("Overview")
 
-# ---- T5a: campaign profile. Senior's task 1 fields, read from the registry ---
+# ---- T5a: campaign profile ---------------------------------------------------
+# Deliberately NOT st.metric. A metric is for a number you read at a glance;
+# using it for a product name and a date range makes the page shout identity
+# louder than performance, and pushes the one number that matters below the fold.
+PRODUCT_LABEL = {"housing+refinance": "Housing loan · Refinance",
+                 "housing": "Housing loan", "refinance": "Refinance"}
 with st.container(border=True):
-    head = st.container(horizontal=True)
-    head.markdown(f"### {camp['name']}")
-    head.markdown(f":violet-badge[{camp.status}]")
-    st.caption(camp.objective)
-    p = st.container(horizontal=True)
-    p.metric("Product", str(camp["product"]))
-    p.metric("Period", f"{camp.start_date} → {camp.end_date}")
-    p.metric("Target", f"฿{camp.target_disbursed_ge3m_thb/1e6:,.0f}M",
-             help="Disbursed value from loans of ฿3M or more.")
-    p.metric("Budget", f"฿{camp.budget_thb/1e6:,.1f}M")
-    p.metric("Owner", str(camp.owner_user_id))
-    p.metric("Attribution", f"{camp.attribution_rule} / {camp.attribution_window_days}d")
+    h1, h2 = st.columns([4, 1])
+    h1.markdown(f"#### {camp['name']} &nbsp;:violet-badge[{camp.status}]")
     if common.can_write("campaign_setup"):
         try:
-            st.page_link("app_pages/campaign_setup.py", label="Edit campaign",
+            h2.page_link("app_pages/campaign_setup.py", label="Edit campaign",
                          icon=":material/tune:")
         except Exception:                       # noqa: BLE001
-            # page_link needs the navigation context, which is absent when a
-            # page is rendered in isolation (the smoke test does exactly that).
-            st.caption(":material/tune: Edit on the Campaign setup page.")
+            h2.caption(":material/tune: Campaign setup")
+    st.caption(camp.objective)
+    facts = [
+        ("Product", PRODUCT_LABEL.get(str(camp["product"]), str(camp["product"]))),
+        ("Period", f"{camp.start_date} → {camp.end_date}"),
+        ("Target", f"฿{camp.target_disbursed_ge3m_thb/1e6:,.0f}M disbursed ≥ ฿3M"),
+        ("Budget", f"฿{camp.budget_thb/1e6:,.1f}M"),
+        ("Owner", str(camp.owner_user_id)),
+        ("Attribution", f"{camp.attribution_rule.replace('_', ' ')}, "
+                        f"{camp.attribution_window_days}-day window"),
+    ]
+    cols = st.columns(3)
+    for i, (k, v) in enumerate(facts):
+        cols[i % 3].markdown(
+            f"<div style='line-height:1.35;margin-bottom:.55rem'>"
+            f"<span style='font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;"
+            f"opacity:.55'>{k}</span><br><span style='font-size:.95rem'>{v}</span></div>",
+            unsafe_allow_html=True)
 
 # ---- O1: pace against plan. The number the owner is asked about. -------------
 actual, target, expected, pct = kpi.pace(cv, camp, now)
@@ -66,9 +76,10 @@ with st.container(border=True):
             color="#a97b22", thickness=3, size=52).encode(x="v")
         st.altair_chart((bands + bar + exp + tgt).properties(height=base_h),
                         use_container_width=True)
-        st.caption(f"▬ :red[disbursed ฿{actual/1e6:,.0f}M]  ·  "
-                   f"▏:orange[expected by today ฿{expected/1e6:,.0f}M]  ·  "
-                   f"▏target ฿{target/1e6:,.0f}M")
+        st.caption(
+            f":red[**Pink bar** = disbursed ฿{actual/1e6:,.0f}M] &nbsp;&nbsp;"
+            f":orange[**Amber line** = expected by today ฿{expected/1e6:,.0f}M] &nbsp;&nbsp;"
+            f"**Black line** = target ฿{target/1e6:,.0f}M")
     with r:
         st.metric("of target", f"{pct:.0%}",
                   delta=f"{(actual-expected)/1e6:+,.1f}M vs plan",
@@ -148,6 +159,16 @@ with st.container(border=True):
     st.subheader("Targeted vs achieved")
     DIMS = {"Age band": "age_band", "Income band": "income_band",
             "Occupation": "occupation", "Region": "region"}
+    # Bands are ordinal. Sorted alphabetically they read "20 - 30, 41 - 50,
+    # 61 - 65, Under 20", which makes a distribution impossible to see.
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.dirname(_os.path.abspath(__file__)))), "dashboard-mockup"))
+    try:
+        import gsb_vocab as _V
+        ORDER = {"age_band": _V.AGE_BANDS, "income_band": _V.INCOME_BANDS}
+    except Exception:                                   # noqa: BLE001
+        ORDER = {}
     d1, d2 = st.columns(2)
     rows_dim = d1.selectbox("Rows", list(DIMS), index=0)
     cols_dim = d2.selectbox("Columns", list(DIMS), index=1)
@@ -183,22 +204,82 @@ with st.container(border=True):
             col = sorted(set(g_t.columns) | set(g_a.columns))
             g_t = g_t.reindex(index=idx, columns=col, fill_value=0)
             g_a = g_a.reindex(index=idx, columns=col, fill_value=0)
+            # Colour by share of each grid's own total, on one shared domain.
+            # Sharing an ABSOLUTE scale looked right and read wrong: the target
+            # list is larger, so its cells dominated and the achieved grid went
+            # flat. The question here is whether the mix shifted, not whether
+            # there are fewer people, and share answers that.
+            def _ord(key, present):
+                want = ORDER.get(key)
+                return ([v for v in want if v in present] +
+                        sorted(p for p in present if p not in want)) if want \
+                    else sorted(present)
+
+            row_sort = _ord(rk, set(idx))
+            col_sort = _ord(ck, set(col))
+            # Cast to native python: a numpy scalar in an Altair spec is not
+            # JSON-serialisable, and Streamlit renders nothing at all rather than
+            # raising, so the charts just silently vanish.
+            tot_t = int(max(g_t.to_numpy().sum(), 1))
+            tot_a = int(max(g_a.to_numpy().sum(), 1))
+            hi = float(max((g_t.to_numpy() / tot_t).max(),
+                           (g_a.to_numpy() / tot_a).max()))
+
+            import re as _re
+
+            def _short(v):
+                """Drop the ordering prefix for display. "01. 0-5,000" is a code;
+                the reader only needs the band."""
+                return _re.sub(r"^\d+\.\s*", "", str(v))
+
+            def heat(g, total, title):
+                d = g.reset_index().melt(id_vars=g.index.name or "index",
+                                         var_name="col", value_name="n")
+                d.columns = ["row", "col", "n"]
+                d["share"] = d.n / total
+                d["row"] = d.row.map(_short)
+                d["col"] = d.col.map(_short)
+                base = alt.Chart(d).encode(
+                    x=alt.X("col:O", title=None, sort=[_short(c) for c in col_sort],
+                            axis=alt.Axis(labelAngle=-35, labelLimit=110,
+                                          labelOverlap=False, labelFontSize=10)),
+                    y=alt.Y("row:O", title=None, sort=[_short(r) for r in row_sort],
+                            axis=alt.Axis(labelLimit=140, labelOverlap=False,
+                                          labelFontSize=10)))
+                cells = base.mark_rect().encode(
+                    color=alt.Color("share:Q",
+                                    scale=alt.Scale(scheme="purples", domain=[0, hi]),
+                                    legend=None),
+                    tooltip=[alt.Tooltip("row", title=rows_dim),
+                             alt.Tooltip("col", title=cols_dim),
+                             alt.Tooltip("n", title="leads", format=","),
+                             alt.Tooltip("share", title="share", format=".1%")])
+                labels = base.mark_text(fontSize=11).encode(
+                    text=alt.Text("n:Q", format=","),
+                    color=alt.condition(alt.datum.share > hi * 0.6,
+                                        alt.value("white"), alt.value("#3d3b39")))
+                return (cells + labels).properties(height=270, title=title)
+
             l, r = st.columns(2)
-            with l:
-                st.caption(f"**Targeted** · {len(target_list):,} leads on the imported list")
-                st.dataframe(g_t.style.background_gradient(cmap="Greys", axis=None),
-                             width="stretch")
-            with r:
-                st.caption(f"**Achieved** · {len(got):,} leads the campaign produced")
-                st.dataframe(g_a.style.background_gradient(cmap="PuRd", axis=None),
-                             width="stretch")
+            l.altair_chart(heat(g_t, tot_t, f"Targeted · {len(target_list):,} leads"),
+                           width="stretch")
+            r.altair_chart(heat(g_a, tot_a, f"Achieved · {len(got):,} leads"),
+                           width="stretch")
+            st.caption("Shaded by share of each side's own total, on one scale, so the "
+                       "two are comparable even though the populations differ in size. "
+                       "Numbers in the cells are lead counts.")
+
             # the one number that says whether targeting held
             ts = (g_t.sum(axis=1) / max(g_t.to_numpy().sum(), 1))
             as_ = (g_a.sum(axis=1) / max(g_a.to_numpy().sum(), 1))
             drift = (as_ - ts).abs().sum() / 2
-            st.caption(f"Row-share drift **{drift:.0%}** — how much of the achieved "
-                       f"population sits in a different {rows_dim.lower()} than "
-                       f"intended. 0% means the campaign reached exactly who it aimed at.")
+            worst = (as_ - ts).abs().idxmax() if len(as_) else None
+            tone = "red" if drift > 0.25 else "orange" if drift > 0.1 else "green"
+            st.markdown(
+                f"**Row-share drift :{tone}[{drift:.0%}]** — the share of the achieved "
+                f"population sitting in a different {rows_dim.lower()} than intended, "
+                f"where 0% would mean the campaign reached exactly who it aimed at."
+                + (f" The biggest single gap is **{worst}**." if worst is not None else ""))
 
 # ---- segment table with drill ------------------------------------------------
 with st.container(border=True):

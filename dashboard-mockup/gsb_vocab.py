@@ -182,13 +182,13 @@ NO_CONTACT_REASONS = [
 
 # extracted from the GSB sample
 INCOME_BANDS = [
-    '07. >50,000',
+    '01. 0-5,000',
+    '02. 5,001-10,000',
     '03. 10,001-20,000',
     '04. 20,001-30,000',
     '05. 30,001-40,000',
     '06. 40,001-50,000',
-    '02. 5,001-10,000',
-    '01. 0-5,000',
+    '07. >50,000',
 ]
 
 # INFERRED — not from GSB, the sample column was empty or single-valued. Confirm the real code list.

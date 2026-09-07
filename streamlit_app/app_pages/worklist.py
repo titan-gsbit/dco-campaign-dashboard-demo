@@ -18,17 +18,36 @@ overdue = open_new[hours_open.reindex(open_new.index) > 24]
 await_docs = cv[(cv.stage == "Contacted") & (cv.days_in_stage > 3)]
 pipe_stuck = cv[cv.stage.isin(["Docs submitted", "Application"]) & (cv.days_in_stage > 7)]
 
+# Queue size and queue health are different questions. Showing six numbers at the
+# same weight let a 21% SLA sit as quietly as a row count, so they are split and
+# the health figures are scored against their targets.
 m = st.container(horizontal=True)
-m.metric("New, no contact yet", len(open_new), f"{len(overdue)} past 24h SLA",
-         delta_color="inverse" if len(overdue) else "off")
+m.metric("Overdue first contact", len(overdue),
+         help="Past the 24-hour SLA. Work these first.")
+m.metric("New, no contact yet", len(open_new))
 m.metric("Contacted, no docs > 3d", len(await_docs))
 m.metric("In process > 7d", len(pipe_stuck))
 m.metric("Open total", int((~cv.stage.isin(["Disbursed", "Rejected", "Duplicate",
                                             "Not qualified", "Cannot contact"])).sum()))
-m.metric("SLA compliance", f"{kpi.sla_compliance(cv):.0%}",
+
+sla, hrs = kpi.sla_compliance(cv), kpi.lead_to_contact_hrs(cv)
+h = st.container(horizontal=True)
+h.metric("SLA compliance", f"{sla:.0%}", delta=f"{sla - 0.8:+.0%} vs 80% target",
+         delta_color="normal",          # higher is better
+
          help=kpi.sla_compliance.definition.exclusions)
-m.metric("Median hrs to contact", f"{kpi.lead_to_contact_hrs(cv):.0f}h",
-         help="Brief §3 SLA: first attempt within 24 hours.")
+h.metric("Median hrs to first contact", f"{hrs:.0f}h",
+         delta=f"{hrs - 24:+.0f}h vs 24h SLA",
+         delta_color="inverse",         # more hours is worse
+
+         help="Brief §3: first attempt within 24 hours.")
+h.metric("Screening coverage", f"{kpi.screening_coverage(cv):.0%}",
+         help="Share of the lead book anyone has actually assessed. A high "
+              "qualified rate on low coverage is not good news.")
+if sla < 0.8 or hrs > 24:
+    st.warning(f"Follow-up is behind: {sla:.0%} of assigned leads met the 24-hour "
+               f"SLA, median {hrs:.0f}h. Every level-3 KPI downstream is produced "
+               f"by working this queue.", icon=":material/schedule:")
 
 # ---- S6: key an outcome without touching the mouse --------------------------
 # The load-bearing interaction. If this is slower than whatever branches use
@@ -79,11 +98,17 @@ if branch != "All branches":
 q = q.sort_values("days_in_stage", ascending=False)
 
 if len(q) == 0:
-    st.success(":material/task_alt: Queue clear — nothing waiting in this bucket.")
+    st.success(f"**{bucket}** is clear — nothing waiting in this bucket."
+               + (f" Try another bucket, or widen the branch filter."
+                  if branch != "All branches" else ""),
+               icon=":material/task_alt:")
     st.stop()
 
 show = q[["lead_id", "name", "branch_name", "stage", "days_in_stage",
           "contact_attempts", "requested_amt_thb", "owner"]].head(200).reset_index(drop=True)
+# a lead with no application has no requested amount; NaN renders blank, the
+# string "None" renders as the word None.
+show["requested_amt_thb"] = pd.to_numeric(show.requested_amt_thb, errors="coerce")
 show["attempt"] = ":material/phone_missed: no answer"
 show["open"] = ":material/person: open"
 
@@ -102,6 +127,7 @@ col_cfg = {
     "lead_id": "Lead", "name": "Name", "branch_name": "Branch", "stage": "Stage",
     "days_in_stage": "Days waiting", "contact_attempts": "Attempts",
     "requested_amt_thb": st.column_config.NumberColumn("Requested ฿", format="localized"),
+    "days_in_stage": st.column_config.NumberColumn("Days waiting", format="%d d"),
     "owner": "Owner",
     "open": st.column_config.ButtonColumn("", type="tertiary", on_click=_open, key="wl_open"),
 }
@@ -111,6 +137,9 @@ if can_write:
         help="Logs one unanswered phone attempt. Reached someone? Open the lead and set the status.")
 else:
     show = show.drop(columns=["attempt"])
-st.dataframe(show, hide_index=True, height=480, column_config=col_cfg)
+# height follows the rows: a fixed height padded short buckets with blank
+# rows, which reads as broken data rather than an empty queue.
+st.dataframe(show, hide_index=True, width="stretch",
+             height=min(480, 44 + 35 * len(show)), column_config=col_cfg)
 st.caption("Sorted by longest waiting first. 'Quick log' = one keystroke per unanswered call; "
            "anything more than that goes through the lead's detail page.")
