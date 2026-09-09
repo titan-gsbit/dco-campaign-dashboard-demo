@@ -1,15 +1,19 @@
-# Pinned to the versions the smoke test passes against. Loose pins let the
-# Streamlit Cloud builder resolve something newer than the app was written for,
-# and that failure surfaces as a blank deployed app rather than a local error.
+# Floors, not exact pins.
 #
-# Every entry is verified by dashboard-mockup/test_clean_build.sh, which installs
-# ONLY this file into an empty virtualenv and runs the suite. Two imports were
-# missing when that check was first run: PyYAML, which auth.py needs and which
-# would have crashed the app on the login screen, and openpyxl, which pandas
-# needs to read an uploaded .xlsx on the target-lead import.
-streamlit==1.63.0
-altair==5.5.0
-pandas==2.2.3
-numpy==2.1.3
-PyYAML==6.0.2
-openpyxl==3.1.5
+# Exact pins were the wrong call and broke the deployed build: numpy 2.1.3 and
+# pandas 2.2.3 ship wheels only up to cp313, and Streamlit Community Cloud now
+# builds on a newer interpreter and ignores runtime.txt. pip then tries to
+# compile both from source and the deploy fails.
+#
+# Floors keep the APIs the app relies on (st.container(horizontal=...),
+# st.column_config.ButtonColumn, width="stretch", st.context.url) while letting
+# pip pick a build that has wheels for whatever Python the platform runs.
+# The major ceiling on streamlit is the one pin worth keeping.
+#
+# Verified by tools/test_clean_build.sh: installs ONLY this file into an empty
+# virtualenv and runs the suite.
+streamlit>=1.63,<2
+pandas>=2.2.3
+numpy>=2.1
+PyYAML>=6.0
+openpyxl>=3.1
